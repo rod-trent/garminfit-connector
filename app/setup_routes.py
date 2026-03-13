@@ -18,6 +18,8 @@ import asyncio
 import os
 from datetime import datetime
 
+import garth
+from garth.sso import resume_login as garth_resume_login
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
 from starlette.requests import Request
@@ -30,6 +32,11 @@ from app.auth_manager import (
     pop_mfa_session,
 )
 from app.database import SessionLocal, User
+
+# Serialize concurrent setup requests: garth uses a module-level global client,
+# so two simultaneous logins would overwrite each other's token state.
+# Setup is rare (one-off per user) so a simple lock is fine.
+_setup_lock = asyncio.Lock()
 
 # ---------------------------------------------------------------------------
 # Jinja2 template environment
@@ -98,12 +105,35 @@ async def health_check(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# Helper: get Garmin display name from a token (optional — never crashes setup)
+# ---------------------------------------------------------------------------
+
+async def _get_display_name(token_b64: str) -> str | None:
+    """
+    Create a temporary Garmin client from an existing token and fetch the
+    display name. Returns None on any failure — this is purely cosmetic.
+    """
+    try:
+        from garminconnect import Garmin
+        loop = asyncio.get_event_loop()
+        client = Garmin()
+        await loop.run_in_executor(None, lambda: client.login(tokenstore=token_b64))
+        return getattr(client, "display_name", None)
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # API: Setup — Step 1 (email + password)
 # ---------------------------------------------------------------------------
 
 async def api_setup_start(request: Request) -> JSONResponse:
     """
-    Begin Garmin authentication.
+    Begin Garmin authentication using garth's low-level API directly.
+
+    garth.login(email, password, return_on_mfa=True) returns:
+      - A falsy value / None  →  success, no MFA needed
+      - A tuple (oauth1_token, client_state)  →  MFA required
 
     Request body: {"email": str, "password": str}
 
@@ -112,8 +142,6 @@ async def api_setup_start(request: Request) -> JSONResponse:
       200 {"mfa_required": true, "session_id": str} — MFA required
       400 {"error": str}                          — bad credentials or other error
     """
-    from garminconnect import Garmin, GarminConnectAuthenticationError
-
     try:
         body = await request.json()
     except Exception:
@@ -125,70 +153,38 @@ async def api_setup_start(request: Request) -> JSONResponse:
     if not email or not password:
         return JSONResponse({"error": "Email and password are required"}, status_code=400)
 
-    # Create Garmin client with return_on_mfa=True so we can handle MFA in-browser
-    garmin_client = Garmin(email=email, password=password)
-
     loop = asyncio.get_event_loop()
 
-    try:
-        # Run blocking login in thread executor
-        result = await loop.run_in_executor(
-            None,
-            lambda: _attempt_login(garmin_client),
-        )
-    except GarminConnectAuthenticationError as e:
-        return JSONResponse(
-            {"error": f"Invalid Garmin credentials: {e}"},
-            status_code=400,
-        )
-    except Exception as e:
-        return JSONResponse(
-            {"error": f"Authentication failed: {e}"},
-            status_code=400,
-        )
+    # Serialize login requests — garth uses a module-level global client
+    async with _setup_lock:
+        try:
+            result = await loop.run_in_executor(
+                None,
+                lambda: garth.login(email, password, return_on_mfa=True),
+            )
+        except Exception as e:
+            return JSONResponse(
+                {"error": f"Authentication failed: {e}"},
+                status_code=400,
+            )
 
-    if result.get("mfa_required"):
-        session_id = create_mfa_session(
-            garmin_client=garmin_client,
-            client_state=result["client_state"],
-            email=email,
-        )
-        return JSONResponse({"mfa_required": True, "session_id": session_id})
+        if isinstance(result, tuple) and len(result) == 2:
+            # MFA required — result is (oauth1_token, client_state)
+            _oauth1_token, client_state = result
+            session_id = create_mfa_session(
+                garmin_client=None,
+                client_state=client_state,
+                email=email,
+            )
+            return JSONResponse({"mfa_required": True, "session_id": session_id})
 
-    # No MFA — tokens are on garmin_client.garth
-    token_b64 = garmin_client.garth.dumps()
-    display_name = getattr(garmin_client, "display_name", None)
+        # No MFA — garth.client now holds the tokens
+        token_b64 = garth.client.dumps()
+
+    # DB save and optional display_name lookup — outside the lock
+    display_name = await _get_display_name(token_b64)
     mcp_url = await _save_user_and_get_url(request, token_b64, display_name, email)
     return JSONResponse({"mcp_url": mcp_url})
-
-
-def _attempt_login(garmin_client) -> dict:
-    """
-    Synchronous Garmin login with MFA detection.
-    Returns {"mfa_required": False} or {"mfa_required": True, "client_state": ...}
-
-    garminconnect's login() raises an exception or calls an MFA callback.
-    We monkey-patch the MFA callback to intercept the flow.
-    """
-    mfa_result = {"mfa_required": False}
-
-    def mfa_callback(prompt: str) -> str:
-        """Called by garth when MFA code is needed."""
-        # Store state so we can resume later; raise to abort this login attempt
-        mfa_result["mfa_required"] = True
-        mfa_result["client_state"] = {"client": garmin_client.garth}
-        # Return empty string — garth will fail, but we catch that externally
-        return "__MFA_INTERCEPTED__"
-
-    try:
-        garmin_client.login(mfa_token_callback=mfa_callback)
-    except Exception as e:
-        # If MFA was intercepted, the login will fail — that's expected
-        if mfa_result["mfa_required"]:
-            return mfa_result
-        raise  # Re-raise genuine errors
-
-    return mfa_result
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +194,9 @@ def _attempt_login(garmin_client) -> dict:
 async def api_setup_mfa(request: Request) -> JSONResponse:
     """
     Complete Garmin authentication with MFA code.
+
+    Uses garth.sso.resume_login(client_state, mfa_code) to complete the flow
+    started in api_setup_start, then extracts the final token via garth.client.dumps().
 
     Request body: {"session_id": str, "mfa_code": str}
 
@@ -223,23 +222,30 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
             status_code=400,
         )
 
+    client_state = session.client_state
     loop = asyncio.get_event_loop()
-    garmin_client = session.garmin_client
 
-    try:
-        # Resume login with the MFA code — uses the live garth.Client with SSO cookies
-        await loop.run_in_executor(
-            None,
-            lambda: garmin_client.login(mfa_token_callback=lambda _: mfa_code),
-        )
-    except Exception as e:
-        return JSONResponse(
-            {"error": f"MFA authentication failed: {e}. Check the code and try again."},
-            status_code=400,
-        )
+    async with _setup_lock:
+        try:
+            # garth.sso.resume_login takes the client_state from step 1 and the MFA code,
+            # returns (oauth1_token, oauth2_token) on success
+            oauth1_token, oauth2_token = await loop.run_in_executor(
+                None,
+                lambda: garth_resume_login(client_state, mfa_code),
+            )
+        except Exception as e:
+            return JSONResponse(
+                {"error": f"MFA authentication failed: {e}. Check the code and try again."},
+                status_code=400,
+            )
 
-    token_b64 = garmin_client.garth.dumps()
-    display_name = getattr(garmin_client, "display_name", None)
+        # Inject the tokens into garth's global client and serialize them
+        garth.client.oauth1_token = oauth1_token
+        garth.client.oauth2_token = oauth2_token
+        token_b64 = garth.client.dumps()
+
+    # DB save and optional display_name lookup — outside the lock
+    display_name = await _get_display_name(token_b64)
     mcp_url = await _save_user_and_get_url(
         request, token_b64, display_name, session.garmin_email
     )
