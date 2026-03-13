@@ -35,10 +35,18 @@ mcp.session_manager.handle_request() — bypassing the now-unused inner Starlett
 """
 
 import contextlib
-import traceback
+import logging
+import sys
 
 from starlette.applications import Starlette
 from starlette.routing import Mount
+
+# ---------------------------------------------------------------------------
+# Force stdout to be unbuffered so print() appears immediately in Railway logs
+# ---------------------------------------------------------------------------
+sys.stdout.reconfigure(line_buffering=True)
+
+log = logging.getLogger("garminfit.mcp")
 
 from app.database import create_tables
 from app.mcp_server import mcp, user_access_token_var
@@ -122,10 +130,12 @@ class GarminMCPRouter:
         accept_hdr = headers.get(b"accept", b"").decode()
         content_type_hdr = headers.get(b"content-type", b"").decode()
         session_id_hdr = headers.get(b"mcp-session-id", b"").decode()
-        print(
-            f"[MCP] {method} {full_path} (local={path}) -> transport={transport} token={access_token[:8]}... "
-            f"accept={accept_hdr!r} content-type={content_type_hdr!r} "
-            f"session-id={session_id_hdr[:8] + '...' if session_id_hdr else '(none)'}"
+        log.warning(
+            "[MCP] %s %s (local=%s) -> transport=%s token=%s... "
+            "accept=%r content-type=%r session-id=%s",
+            method, full_path, path, transport, access_token[:8],
+            accept_hdr, content_type_hdr,
+            (session_id_hdr[:8] + "...") if session_id_hdr else "(none)",
         )
 
         # Set the ContextVar so MCP tools can read the user's identity
@@ -142,9 +152,10 @@ class GarminMCPRouter:
                             for k, v in event.get("headers", [])
                             if isinstance(k, bytes)
                         }
-                        print(
-                            f"[MCP] response status={status} "
-                            f"session-id={resp_headers.get('mcp-session-id', '(none)')[:16]}..."
+                        log.warning(
+                            "[MCP] response status=%s session-id=%s",
+                            status,
+                            resp_headers.get("mcp-session-id", "(none)")[:16] + "...",
                         )
                     await send(event)
 
@@ -168,11 +179,10 @@ class GarminMCPRouter:
                 await self._sse_app(new_scope, receive, send)
 
         except Exception as e:
-            print(
-                f"[MCP] EXCEPTION transport={transport} method={method} path={full_path} "
-                f"token={access_token[:8]}... {type(e).__name__}: {e}"
+            log.exception(
+                "[MCP] EXCEPTION transport=%s method=%s path=%s token=%s... %s: %s",
+                transport, method, full_path, access_token[:8], type(e).__name__, e,
             )
-            traceback.print_exc()
             # Return 500 JSON to the client instead of crashing the ASGI connection
             if scope["type"] == "http":
                 try:
@@ -217,29 +227,29 @@ async def lifespan(app):
        running for the duration of the server's life.
     """
     import os
-    print("garminfit-connector starting up")
-    print(f"  DATABASE_URL set: {'yes' if os.environ.get('DATABASE_URL') else 'NO -- using SQLite fallback'}")
-    print(f"  TOKEN_ENCRYPTION_KEY set: {'yes' if os.environ.get('TOKEN_ENCRYPTION_KEY') else 'NO -- will crash on setup'}")
-    print(f"  APP_BASE_URL: {os.environ.get('APP_BASE_URL', '(not set -- using request host)')}")
+    log.warning("garminfit-connector starting up")
+    log.warning("  DATABASE_URL set: %s", "yes" if os.environ.get("DATABASE_URL") else "NO -- using SQLite fallback")
+    log.warning("  TOKEN_ENCRYPTION_KEY set: %s", "yes" if os.environ.get("TOKEN_ENCRYPTION_KEY") else "NO -- will crash on setup")
+    log.warning("  APP_BASE_URL: %s", os.environ.get("APP_BASE_URL", "(not set -- using request host)"))
 
     try:
         await create_tables()
-        print("Database tables ready")
+        log.warning("Database tables ready")
     except Exception as e:
-        print(f"Database startup warning: {e}")
-        print("  App will continue -- DB may not be ready yet")
+        log.warning("Database startup warning: %s", e)
+        log.warning("  App will continue -- DB may not be ready yet")
 
     # mcp.streamable_http_app() creates mcp._session_manager if it doesn't
     # exist yet (idempotent; we discard the returned Starlette app because
     # we call the session manager directly).
     mcp.streamable_http_app()
-    print("MCP session manager initialising")
+    log.warning("MCP session manager initialising")
 
     async with mcp.session_manager.run():
-        print("MCP session manager started -- ready to accept connections")
+        log.warning("MCP session manager started -- ready to accept connections")
         yield
 
-    print("MCP session manager stopped")
+    log.warning("MCP session manager stopped")
 
 
 app = Starlette(
