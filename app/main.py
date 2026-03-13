@@ -102,6 +102,19 @@ class GarminMCPRouter:
         new_scope["path"] = sub_path
         new_scope["raw_path"] = sub_path.encode()
 
+        # Critical: include access_token in root_path so FastMCP advertises the
+        # correct messages URL back to the client.
+        #
+        # Starlette's Mount("/mcp", ...) already appended "/mcp" to root_path.
+        # FastMCP constructs the messages endpoint as:
+        #   full_path = scope["root_path"] + self._endpoint
+        #               (e.g., "/mcp" + "/messages/" → "/mcp/messages/")
+        # Without the token that URL is unroutable — our router needs the token
+        # in the path to set the ContextVar. Adding "/{access_token}" here makes
+        # FastMCP advertise "/mcp/{access_token}/messages/?session_id=..." which
+        # our router can parse correctly on the subsequent POST.
+        new_scope["root_path"] = scope.get("root_path", "").rstrip("/") + f"/{access_token}"
+
         try:
             await self._mcp_app(new_scope, receive, send)
         finally:
