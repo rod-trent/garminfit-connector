@@ -168,9 +168,21 @@ class GarminMCPRouter:
                 await self._sse_app(new_scope, receive, send)
 
         except Exception as e:
-            print(f"[MCP] ERROR in transport={transport}: {type(e).__name__}: {e}")
+            print(
+                f"[MCP] EXCEPTION transport={transport} method={method} path={full_path} "
+                f"token={access_token[:8]}... {type(e).__name__}: {e}"
+            )
             traceback.print_exc()
-            raise
+            # Return 500 JSON to the client instead of crashing the ASGI connection
+            if scope["type"] == "http":
+                try:
+                    import json as _json
+                    body = _json.dumps({"error": str(e), "type": type(e).__name__}).encode()
+                    await send({"type": "http.response.start", "status": 500,
+                                "headers": [[b"content-type", b"application/json"]]})
+                    await send({"type": "http.response.body", "body": body})
+                except Exception:
+                    pass  # send already started — nothing we can do
         finally:
             user_access_token_var.reset(token_ctx)
 

@@ -333,12 +333,32 @@ async def setup_success_page(request: Request) -> HTMLResponse:
     return _render("success.html")
 
 
+async def debug_mcp(request: Request) -> JSONResponse:
+    """
+    Diagnostic endpoint — confirms the MCP session manager is alive.
+    Visit /debug/mcp to verify the server is healthy before connecting Claude.
+    """
+    from app.mcp_server import mcp
+    try:
+        sm = mcp.session_manager
+        return JSONResponse({
+            "status": "ok",
+            "session_manager": type(sm).__name__,
+            "json_response": sm.json_response,
+            "stateless": sm.stateless,
+            "active_sessions": len(getattr(sm, "_server_instances", {})),
+        })
+    except Exception as e:
+        return JSONResponse({"status": "error", "detail": str(e)}, status_code=500)
+
+
 setup_routes = [
     Route("/", root, methods=["GET"]),
     Route("/setup", setup_page, methods=["GET"]),
     Route("/setup/success", setup_success_page, methods=["GET"]),
     Route("/disconnect", disconnect_page, methods=["GET"]),
     Route("/health", health_check, methods=["GET"]),
+    Route("/debug/mcp", debug_mcp, methods=["GET"]),
     Route("/api/setup/start", api_setup_start, methods=["POST"]),
     Route("/api/setup/mfa", api_setup_mfa, methods=["POST"]),
     Route("/api/disconnect", api_disconnect, methods=["POST"]),
