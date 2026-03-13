@@ -106,16 +106,40 @@ class GarminMCPRouter:
             await self._not_found(scope, receive, send)
             return
 
-        print(f"[MCP] {method} {path} -> transport={transport} token={access_token[:8]}...")
+        # Log incoming headers for diagnostics
+        headers = dict(scope.get("headers", []))
+        accept_hdr = headers.get(b"accept", b"").decode()
+        content_type_hdr = headers.get(b"content-type", b"").decode()
+        session_id_hdr = headers.get(b"mcp-session-id", b"").decode()
+        print(
+            f"[MCP] {method} {path} -> transport={transport} token={access_token[:8]}... "
+            f"accept={accept_hdr!r} content-type={content_type_hdr!r} "
+            f"session-id={session_id_hdr[:8] + '...' if session_id_hdr else '(none)'}"
+        )
 
         # Set the ContextVar so MCP tools can read the user's identity
         token_ctx = user_access_token_var.set(access_token)
 
         try:
             if transport == "streamable":
+                # Intercept send to log the response status
+                async def logging_send(event):
+                    if event.get("type") == "http.response.start":
+                        status = event.get("status", "?")
+                        resp_headers = {
+                            k.decode(): v.decode()
+                            for k, v in event.get("headers", [])
+                            if isinstance(k, bytes)
+                        }
+                        print(
+                            f"[MCP] response status={status} "
+                            f"session-id={resp_headers.get('mcp-session-id', '(none)')[:16]}..."
+                        )
+                    await send(event)
+
                 # Call the session manager directly -- this avoids the nested-
                 # lifespan problem described in the module docstring.
-                await mcp.session_manager.handle_request(scope, receive, send)
+                await mcp.session_manager.handle_request(scope, receive, logging_send)
 
             else:
                 # SSE legacy: lazy-init the sse_app and rewrite the path.

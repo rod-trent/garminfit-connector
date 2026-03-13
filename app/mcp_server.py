@@ -108,6 +108,7 @@ async def _format(data_type: str, activity_limit: int = 5) -> str:
 
 mcp = FastMCP(
     "Garmin Fitness",
+    json_response=True,   # Respond with JSON instead of SSE — avoids EventSourceResponse/proxy issues
     instructions=(
         "Tools for querying the connected user's Garmin Connect fitness data. "
         "All date parameters use YYYY-MM-DD format. "
