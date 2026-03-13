@@ -60,7 +60,7 @@ from app.setup_routes import setup_routes
 
 class GarminMCPRouter:
     """
-    Routes requests from (after Starlette Mount("/connect", ...) strips "/connect"):
+    Routes requests from (after Starlette Mount("/api/garmin", ...) strips "/api/garmin"):
 
       /{access_token}           → FastMCP Streamable HTTP (MCP 2025-03)
       /{access_token}/sse       → FastMCP SSE endpoint (legacy)
@@ -283,8 +283,10 @@ _starlette = Starlette(
         # Web pages + API endpoints
         *setup_routes,
 
-        # MCP connector -- everything under /connect/ goes to GarminMCPRouter
-        Mount("/connect", app=_mcp_router),
+        # MCP connector -- everything under /api/garmin/ goes to GarminMCPRouter
+        # Note: /mcp/ and /connect/ are intercepted by Railway's proxy layer;
+        # /api/* is not restricted and routes correctly to this service.
+        Mount("/api/garmin", app=_mcp_router),
     ],
 )
 

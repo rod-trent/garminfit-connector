@@ -68,7 +68,7 @@ async def _save_user_and_get_url(
     encrypted = encrypt_token(token_b64)
 
     base_url = os.environ.get("APP_BASE_URL", str(request.base_url).rstrip("/"))
-    mcp_url = f"{base_url}/connect/{access_token}"
+    mcp_url = f"{base_url}/api/garmin/{access_token}"
 
     async with SessionLocal() as db:
         user = User(

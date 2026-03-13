@@ -47,11 +47,15 @@ def decrypt_token(encrypted: str) -> str:
 
 def generate_access_token() -> str:
     """
-    Generate a cryptographically random 64-character hex access token.
+    Generate a cryptographically random URL-safe token (~22 chars).
     This is the token embedded in the user's MCP URL path:
-      https://garminfit-connector.railway.app/mcp/{access_token}/sse
+      https://garminfit-connector.railway.app/api/garmin/{access_token}
+
+    token_urlsafe(16) produces a base64url string (a-z A-Z 0-9 - _)
+    that is shorter and less likely to be flagged by WAF rules than a
+    64-character hex string (which resembles a SHA-256 hash).
     """
-    return secrets.token_hex(32)  # 32 bytes → 64 hex characters
+    return secrets.token_urlsafe(16)  # 16 bytes → ~22 URL-safe chars
 
 
 # ---------------------------------------------------------------------------
