@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Garminfit Connector — Connected!</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      padding: 2.5rem;
+      max-width: 540px;
+      width: 100%;
+    }
+    .success-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+    h1 { font-size: 1.5rem; font-weight: 700; color: #111; margin-bottom: 0.25rem; }
+    .subtitle { color: #555; font-size: 0.95rem; margin-bottom: 1.75rem; }
+    .url-box {
+      background: #f5f8ff;
+      border: 1.5px solid #c0d4f5;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.8rem;
+      color: #1a3a6b;
+      word-break: break-all;
+      line-height: 1.5;
+      margin-bottom: 0.75rem;
+    }
+    .btn-copy {
+      width: 100%;
+      padding: 0.7rem;
+      background: #0066cc;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-bottom: 1.75rem;
+    }
+    .btn-copy:hover { background: #0052a3; }
+    .btn-copy.copied { background: #27ae60; }
+    .steps { margin-bottom: 1.5rem; }
+    .steps h2 { font-size: 1rem; font-weight: 700; color: #111; margin-bottom: 0.85rem; }
+    .step {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 0.85rem;
+      align-items: flex-start;
+    }
+    .step-num {
+      background: #0066cc;
+      color: #fff;
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-text { font-size: 0.9rem; color: #333; line-height: 1.5; }
+    .step-text code {
+      background: #f0f0f0;
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+    .tools-section {
+      background: #f9f9f9;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+    }
+    .tools-section h3 { font-size: 0.875rem; font-weight: 700; color: #333; margin-bottom: 0.65rem; }
+    .tool-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      color: #555;
+    }
+    .tool-list span::before { content: "✓ "; color: #27ae60; font-weight: bold; }
+    .footer-links {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .footer-links a { color: #0066cc; text-decoration: none; }
+    .footer-links a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="success-icon">🎉</div>
+    <h1>Garmin Connected!</h1>
+    <p class="subtitle">Your personal MCP URL is ready. Copy it and add it to the Claude app.</p>
+
+    <div class="url-box" id="mcp-url">Loading…</div>
+    <button class="btn-copy" id="btn-copy" onclick="copyUrl()">📋 Copy MCP URL</button>
+
+    <div class="steps">
+      <h2>Add to Claude</h2>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">Open the <strong>Claude app</strong> (mobile or web at claude.ai)</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">Go to <strong>Settings → Connectors</strong> (or Integrations)</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">Tap <strong>Add Connector</strong> and paste your MCP URL</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-text">Start chatting! Try: <em>"How did I sleep last night?"</em> or <em>"Give me a health overview for today"</em></div>
+      </div>
+    </div>
+
+    <div class="tools-section">
+      <h3>Available Garmin Tools in Claude</h3>
+      <div class="tool-list">
+        <span>Health snapshot</span>
+        <span>Sleep summary</span>
+        <span>Activities</span>
+        <span>Body Battery</span>
+        <span>Stress levels</span>
+        <span>HRV status</span>
+        <span>Heart rate</span>
+        <span>Training status</span>
+        <span>Training readiness</span>
+        <span>Intensity minutes</span>
+        <span>Nutrition log</span>
+        <span>Hydration</span>
+        <span>Body metrics</span>
+        <span>SpO2 &amp; breathing</span>
+        <span>Date-range activities</span>
+        <span>Daily summary</span>
+      </div>
+    </div>
+
+    <div class="footer-links">
+      Want to disconnect? <a href="/disconnect">Remove your Garmin connection</a>
+      &nbsp;·&nbsp;
+      <a href="/setup">Connect another account</a>
+    </div>
+  </div>
+
+  <script>
+    // Read the MCP URL from the query string
+    const params = new URLSearchParams(window.location.search);
+    const mcpUrl = params.get('url') || '';
+
+    if (mcpUrl) {
+      document.getElementById('mcp-url').textContent = mcpUrl;
+    } else {
+      document.getElementById('mcp-url').textContent = 'URL not found — please go back and set up again.';
+      document.getElementById('btn-copy').disabled = true;
+    }
+
+    function copyUrl() {
+      if (!mcpUrl) return;
+      navigator.clipboard.writeText(mcpUrl).then(() => {
+        const btn = document.getElementById('btn-copy');
+        btn.textContent = '✓ Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = '📋 Copy MCP URL';
+          btn.classList.remove('copied');
+        }, 2500);
+      });
+    }
+  </script>
+</body>
+</html>

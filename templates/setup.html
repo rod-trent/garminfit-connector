@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Garminfit Connector — Setup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      padding: 2.5rem;
+      max-width: 460px;
+      width: 100%;
+    }
+    .logo { font-size: 2rem; margin-bottom: 0.5rem; }
+    h1 { font-size: 1.5rem; font-weight: 700; color: #111; margin-bottom: 0.25rem; }
+    .subtitle { color: #555; font-size: 0.95rem; margin-bottom: 1.75rem; }
+    .security-note {
+      background: #f0f9f0;
+      border: 1px solid #c3e6cb;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-size: 0.85rem;
+      color: #2d6a4f;
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+    }
+    label { display: block; font-size: 0.875rem; font-weight: 600; color: #333; margin-bottom: 0.35rem; }
+    input[type="email"], input[type="password"], input[type="text"] {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      border: 1.5px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 1rem;
+    }
+    input:focus { border-color: #0066cc; }
+    .btn {
+      width: 100%;
+      padding: 0.75rem;
+      background: #0066cc;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: #0052a3; }
+    .btn:disabled { background: #9bb8d8; cursor: not-allowed; }
+    .btn-secondary {
+      background: #6c757d;
+    }
+    .btn-secondary:hover { background: #5a6268; }
+    .section { display: none; }
+    .section.active { display: block; }
+    .error-box {
+      background: #fff0f0;
+      border: 1px solid #f5c6c6;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #c0392b;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    .spinner {
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .mfa-info {
+      background: #fff8e6;
+      border: 1px solid #ffd166;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-size: 0.875rem;
+      color: #7c5a00;
+      margin-bottom: 1rem;
+    }
+    .footer-links {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .footer-links a { color: #0066cc; text-decoration: none; }
+    .footer-links a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🏃</div>
+    <h1>Connect Garmin to Claude</h1>
+    <p class="subtitle">Enter your Garmin Connect credentials to get a personal MCP URL for the Claude app.</p>
+
+    <div class="security-note">
+      🔒 <strong>Your credentials are never stored.</strong> We use them only to obtain OAuth tokens, which are encrypted and stored securely. You can disconnect at any time.
+    </div>
+
+    <!-- Step 1: Credentials form -->
+    <div id="step-credentials" class="section active">
+      <div id="cred-error" class="error-box" style="display:none;"></div>
+      <div>
+        <label for="email">Garmin Connect Email</label>
+        <input type="email" id="email" placeholder="you@example.com" autocomplete="username" />
+      </div>
+      <div>
+        <label for="password">Garmin Connect Password</label>
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <button class="btn" id="btn-connect" onclick="startSetup()">Connect Garmin Account</button>
+    </div>
+
+    <!-- Step 2: MFA form -->
+    <div id="step-mfa" class="section">
+      <div class="mfa-info">
+        📱 Your Garmin account has two-factor authentication enabled. Enter the code from your authenticator app or SMS.
+        <br><small style="color:#a07000;">This code expires in ~5 minutes.</small>
+      </div>
+      <div id="mfa-error" class="error-box" style="display:none;"></div>
+      <div>
+        <label for="mfa-code">Verification Code</label>
+        <input type="text" id="mfa-code" placeholder="123456" maxlength="8" inputmode="numeric"
+               autocomplete="one-time-code" />
+      </div>
+      <button class="btn" id="btn-mfa" onclick="submitMFA()">Verify &amp; Connect</button>
+      <button class="btn btn-secondary" style="margin-top:0.75rem;" onclick="resetToStep1()">← Start Over</button>
+    </div>
+
+    <!-- Step 3: Success — redirect to success.html via JS -->
+    <div id="step-loading" class="section">
+      <p style="text-align:center; color:#555; padding: 1.5rem 0;">
+        <span class="spinner" style="border-top-color:#0066cc; border-color: rgba(0,102,204,0.3);"></span>
+        Authenticating with Garmin…
+      </p>
+    </div>
+
+    <div class="footer-links">
+      Already connected? <a href="/disconnect">Disconnect your account</a>
+    </div>
+  </div>
+
+  <script>
+    let pendingSessionId = null;
+
+    function showError(elementId, message) {
+      const el = document.getElementById(elementId);
+      el.textContent = message;
+      el.style.display = 'block';
+    }
+
+    function hideError(elementId) {
+      document.getElementById(elementId).style.display = 'none';
+    }
+
+    function showSection(id) {
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function resetToStep1() {
+      pendingSessionId = null;
+      hideError('cred-error');
+      document.getElementById('password').value = '';
+      document.getElementById('btn-connect').disabled = false;
+      document.getElementById('btn-connect').innerHTML = 'Connect Garmin Account';
+      showSection('step-credentials');
+    }
+
+    async function startSetup() {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      hideError('cred-error');
+
+      if (!email || !password) {
+        showError('cred-error', 'Please enter your email and password.');
+        return;
+      }
+
+      const btn = document.getElementById('btn-connect');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Connecting…';
+
+      try {
+        const resp = await fetch('/api/setup/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          showError('cred-error', data.error || 'Authentication failed. Check your credentials.');
+          btn.disabled = false;
+          btn.innerHTML = 'Connect Garmin Account';
+          return;
+        }
+
+        if (data.mfa_required) {
+          pendingSessionId = data.session_id;
+          showSection('step-mfa');
+          setTimeout(() => document.getElementById('mfa-code').focus(), 100);
+          return;
+        }
+
+        // Success — redirect with the MCP URL in the query string
+        window.location.href = '/setup/success?url=' + encodeURIComponent(data.mcp_url);
+
+      } catch (err) {
+        showError('cred-error', 'Network error. Please try again.');
+        btn.disabled = false;
+        btn.innerHTML = 'Connect Garmin Account';
+      }
+    }
+
+    async function submitMFA() {
+      const mfaCode = document.getElementById('mfa-code').value.trim().replace(/\s/g, '');
+      hideError('mfa-error');
+
+      if (!mfaCode) {
+        showError('mfa-error', 'Please enter your verification code.');
+        return;
+      }
+
+      const btn = document.getElementById('btn-mfa');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Verifying…';
+
+      try {
+        const resp = await fetch('/api/setup/mfa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: pendingSessionId, mfa_code: mfaCode }),
+        });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          showError('mfa-error', data.error || 'MFA verification failed. Try again.');
+          btn.disabled = false;
+          btn.innerHTML = 'Verify &amp; Connect';
+          return;
+        }
+
+        window.location.href = '/setup/success?url=' + encodeURIComponent(data.mcp_url);
+
+      } catch (err) {
+        showError('mfa-error', 'Network error. Please try again.');
+        btn.disabled = false;
+        btn.innerHTML = 'Verify &amp; Connect';
+      }
+    }
+
+    // Allow Enter key to submit
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const step1 = document.getElementById('step-credentials');
+        const step2 = document.getElementById('step-mfa');
+        if (step1.classList.contains('active')) startSetup();
+        if (step2.classList.contains('active')) submitMFA();
+      }
+    });
+  </script>
+</body>
+</html>

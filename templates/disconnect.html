@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Garminfit Connector — Disconnect</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      padding: 2.5rem;
+      max-width: 460px;
+      width: 100%;
+    }
+    .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    h1 { font-size: 1.5rem; font-weight: 700; color: #111; margin-bottom: 0.25rem; }
+    .subtitle { color: #555; font-size: 0.95rem; margin-bottom: 1.75rem; }
+    .warning-box {
+      background: #fff5f0;
+      border: 1px solid #f5c6a0;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      font-size: 0.875rem;
+      color: #7c3a00;
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+    }
+    label { display: block; font-size: 0.875rem; font-weight: 600; color: #333; margin-bottom: 0.35rem; }
+    input[type="email"] {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      border: 1.5px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 1rem;
+    }
+    input:focus { border-color: #cc3300; }
+    .btn {
+      width: 100%;
+      padding: 0.75rem;
+      background: #cc3300;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: #a82900; }
+    .btn:disabled { background: #e8a898; cursor: not-allowed; }
+    .error-box {
+      background: #fff0f0;
+      border: 1px solid #f5c6c6;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #c0392b;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    .success-box {
+      background: #f0fff4;
+      border: 1px solid #a8d5b8;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      color: #1a5c32;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    .spinner {
+      display: inline-block;
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .footer-links {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .footer-links a { color: #0066cc; text-decoration: none; }
+    .footer-links a:hover { text-decoration: underline; }
+    #result { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🔌</div>
+    <h1>Disconnect Garmin</h1>
+    <p class="subtitle">Enter your Garmin Connect email to revoke your MCP connection.</p>
+
+    <div class="warning-box">
+      ⚠️ <strong>This will invalidate your MCP URL.</strong> Claude will no longer have access to your Garmin data. You can reconnect at any time by visiting the setup page.
+    </div>
+
+    <div id="form-section">
+      <div id="error-box" class="error-box" style="display:none;"></div>
+      <div>
+        <label for="email">Garmin Connect Email</label>
+        <input type="email" id="email" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <button class="btn" id="btn-disconnect" onclick="doDisconnect()">Disconnect My Account</button>
+    </div>
+
+    <div id="result" class="success-box"></div>
+
+    <div class="footer-links">
+      Changed your mind? <a href="/setup">Reconnect your Garmin account</a>
+    </div>
+  </div>
+
+  <script>
+    async function doDisconnect() {
+      const email = document.getElementById('email').value.trim();
+      const errorBox = document.getElementById('error-box');
+      errorBox.style.display = 'none';
+
+      if (!email) {
+        errorBox.textContent = 'Please enter your Garmin email address.';
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('btn-disconnect');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Disconnecting…';
+
+      try {
+        const resp = await fetch('/api/disconnect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          errorBox.textContent = data.error || 'Disconnect failed. Please try again.';
+          errorBox.style.display = 'block';
+          btn.disabled = false;
+          btn.innerHTML = 'Disconnect My Account';
+          return;
+        }
+
+        document.getElementById('form-section').style.display = 'none';
+        const result = document.getElementById('result');
+        result.innerHTML = `
+          ✅ <strong>Disconnected successfully.</strong><br><br>
+          ${data.message}<br><br>
+          <a href="/setup" style="color:#1a5c32; font-weight:600;">Reconnect Garmin →</a>
+        `;
+        result.style.display = 'block';
+
+      } catch (err) {
+        errorBox.textContent = 'Network error. Please try again.';
+        errorBox.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = 'Disconnect My Account';
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doDisconnect();
+    });
+  </script>
+</body>
+</html>

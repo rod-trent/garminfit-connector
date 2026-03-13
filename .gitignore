@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# Environment variables — NEVER commit real secrets
+.env
+
+# Database (local SQLite dev DB)
+*.db
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic (if added later)
+# alembic/versions/*.py  # keep these in git
+
+# Garmin token files (desktop app — not used in server, but just in case)
+.garmin_tokens/
