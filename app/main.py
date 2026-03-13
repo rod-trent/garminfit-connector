@@ -31,18 +31,18 @@ from app.setup_routes import setup_routes
 class GarminMCPRouter:
     """
     Routes requests from:
-      /mcp/{access_token}/sse         → FastMCP SSE endpoint (GET)
-      /mcp/{access_token}/messages/   → FastMCP messages endpoint (POST)
+      /{access_token}/sse         → FastMCP SSE endpoint (GET)
+      /{access_token}/messages/   → FastMCP messages endpoint (POST)
+
+    NOTE: This router is mounted at /mcp via Starlette's Mount("/mcp", ...).
+    Starlette strips the "/mcp" prefix before passing scope to this app,
+    so paths arrive here as "/{access_token}/sse", not "/mcp/{access_token}/sse".
 
     Extracts {access_token} from the URL, sets it in user_access_token_var
     (a contextvars.ContextVar), rewrites the path, and delegates to the
     FastMCP Starlette SSE app.
-
-    This design avoids Starlette's Mount path-parameter edge cases and gives
-    us full control over the path rewriting and context injection.
     """
 
-    MCP_PREFIX = "/mcp/"
     VALID_SUBPATHS = {"/sse", "/messages/", "/messages"}
 
     def __init__(self):
@@ -59,13 +59,19 @@ class GarminMCPRouter:
 
         path: str = scope.get("path", "")
 
-        if not path.startswith(self.MCP_PREFIX):
-            # Not an MCP path — return 404
+        # Starlette's Mount("/mcp", ...) strips "/mcp" before calling us.
+        # Paths arrive as "/{access_token}/sse" or "/{access_token}/messages/".
+        # Strip the leading "/" to get "{access_token}/sse".
+        if not path.startswith("/"):
             await self._not_found(scope, receive, send)
             return
 
-        # Parse: /mcp/{access_token}/{subpath}
-        rest = path[len(self.MCP_PREFIX):]  # "{access_token}/sse" or "{access_token}/messages/"
+        rest = path[1:]  # strip leading "/" → "{access_token}/sse"
+
+        if not rest:
+            await self._not_found(scope, receive, send)
+            return
+
         slash_idx = rest.find("/")
 
         if slash_idx == -1:
