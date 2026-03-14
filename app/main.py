@@ -60,73 +60,40 @@ from app.setup_routes import setup_routes
 
 class GarminMCPRouter:
     """
-    Routes requests from (after Starlette Mount("/api/garmin", ...) strips "/api/garmin"):
+    Handles MCP Streamable HTTP (2025-03-26) requests mounted at /garmin.
 
-      /{access_token}           → FastMCP Streamable HTTP (MCP 2025-03)
-      /{access_token}/sse       → FastMCP SSE endpoint (legacy)
-      /{access_token}/messages/ → FastMCP SSE messages (legacy)
+    Token identity is carried in the query string, not the URL path:
+      POST/GET https://…/garmin/?token={access_token}
 
-    Extracts {access_token} from the URL, sets it in user_access_token_var,
-    and dispatches to the appropriate handler.
+    Why query params instead of path segments:
+      FastMCP's session manager returns 421 for any request whose path has a
+      subpath beyond the mount root (e.g. /garmin/abc → 421).  Moving the
+      token to ?token= keeps the effective path at /garmin/ (the mount root)
+      so the session manager accepts every request.
     """
 
-    SSE_SUBPATHS = {"/sse", "/messages/", "/messages"}
-
     def __init__(self):
-        self._sse_app = None     # FastMCP SSE transport (legacy) — lazy-init
+        pass
 
     async def __call__(self, scope, receive, send):
         full_path: str = scope.get("path", "")
         method: str = scope.get("method", "")
 
-        # Log every call, even non-HTTP, so we know the router is reachable
         log.warning("[MCP-ROUTER] called type=%s method=%s path=%s", scope["type"], method, full_path)
 
         if scope["type"] not in ("http", "websocket"):
-            # Lifespan events: the session manager is managed by the outer
-            # lifespan context; nothing to do here.
             return
 
-        # Starlette's Mount updates scope["root_path"] but does NOT strip the
-        # mount prefix from scope["path"].  We must strip it ourselves so the
-        # router sees /{token} instead of /mcp/{token}.
-        root_path: str = scope.get("root_path", "")
-        if root_path and full_path.startswith(root_path):
-            path = full_path[len(root_path):]
-            if not path:
-                path = "/"
-        else:
-            path = full_path
-
-        rest = path.lstrip("/")   # "{token}" or "{token}/sse" or ""
-
-        log.warning("[MCP-ROUTER] root_path=%r → local_path=%r rest=%r", root_path, path, rest[:20])
-
-        if not rest:
-            log.warning("[MCP-ROUTER] 404 empty rest")
-            await self._not_found(scope, receive, send)
-            return
-
-        slash_idx = rest.find("/")
-
-        if slash_idx == -1:
-            # No subpath -- /{token} -> Streamable HTTP
-            access_token = rest
-            transport = "streamable"
-            internal_path = None
-        else:
-            # Has subpath -- SSE legacy routing
-            access_token = rest[:slash_idx]
-            sub_path = rest[slash_idx:]   # "/sse", "/messages/", etc.
-            if sub_path not in self.SSE_SUBPATHS:
-                log.warning("[MCP-ROUTER] 404 unknown sub_path=%r", sub_path)
-                await self._not_found(scope, receive, send)
-                return
-            transport = "sse"
-            internal_path = sub_path
+        # Extract token from query string: ?token={access_token}
+        query_string: bytes = scope.get("query_string", b"")
+        access_token: str | None = None
+        for part in query_string.split(b"&"):
+            if part.startswith(b"token="):
+                access_token = part[len(b"token="):].decode()
+                break
 
         if not access_token:
-            log.warning("[MCP-ROUTER] 404 empty access_token")
+            log.warning("[MCP-ROUTER] 404 no ?token= in query string (path=%s qs=%r)", full_path, query_string)
             await self._not_found(scope, receive, send)
             return
 
@@ -136,9 +103,8 @@ class GarminMCPRouter:
         content_type_hdr = headers.get(b"content-type", b"").decode()
         session_id_hdr = headers.get(b"mcp-session-id", b"").decode()
         log.warning(
-            "[MCP] %s %s (local=%s) -> transport=%s token=%s... "
-            "accept=%r content-type=%r session-id=%s",
-            method, full_path, path, transport, access_token[:8],
+            "[MCP] %s %s token=%s... accept=%r content-type=%r session-id=%s",
+            method, full_path, access_token[:8],
             accept_hdr, content_type_hdr,
             (session_id_hdr[:8] + "...") if session_id_hdr else "(none)",
         )
@@ -147,48 +113,29 @@ class GarminMCPRouter:
         token_ctx = user_access_token_var.set(access_token)
 
         try:
-            if transport == "streamable":
-                # Intercept send to log the response status
-                async def logging_send(event):
-                    if event.get("type") == "http.response.start":
-                        status = event.get("status", "?")
-                        resp_headers = {
-                            k.decode(): v.decode()
-                            for k, v in event.get("headers", [])
-                            if isinstance(k, bytes)
-                        }
-                        log.warning(
-                            "[MCP] response status=%s session-id=%s",
-                            status,
-                            resp_headers.get("mcp-session-id", "(none)")[:16] + "...",
-                        )
-                    await send(event)
+            # Intercept send to log the response status
+            async def logging_send(event):
+                if event.get("type") == "http.response.start":
+                    status = event.get("status", "?")
+                    resp_headers = {
+                        k.decode(): v.decode()
+                        for k, v in event.get("headers", [])
+                        if isinstance(k, bytes)
+                    }
+                    log.warning(
+                        "[MCP] response status=%s session-id=%s",
+                        status,
+                        resp_headers.get("mcp-session-id", "(none)")[:16] + "...",
+                    )
+                await send(event)
 
-                # Call the session manager directly -- this avoids the nested-
-                # lifespan problem described in the module docstring.
-                await mcp.session_manager.handle_request(scope, receive, logging_send)
-
-            else:
-                # SSE legacy: lazy-init the sse_app and rewrite the path.
-                if self._sse_app is None:
-                    self._sse_app = mcp.sse_app()
-
-                new_scope = dict(scope)
-                new_scope["path"] = internal_path
-                new_scope["raw_path"] = internal_path.encode()
-                # Include access_token in root_path so FastMCP advertises the
-                # correct messages URL: /mcp/{token}/messages/?session_id=...
-                new_scope["root_path"] = (
-                    scope.get("root_path", "").rstrip("/") + f"/{access_token}"
-                )
-                await self._sse_app(new_scope, receive, send)
+            await mcp.session_manager.handle_request(scope, receive, logging_send)
 
         except Exception as e:
             log.exception(
-                "[MCP] EXCEPTION transport=%s method=%s path=%s token=%s... %s: %s",
-                transport, method, full_path, access_token[:8], type(e).__name__, e,
+                "[MCP] EXCEPTION method=%s path=%s token=%s... %s: %s",
+                method, full_path, access_token[:8], type(e).__name__, e,
             )
-            # Return 500 JSON to the client instead of crashing the ASGI connection
             if scope["type"] == "http":
                 try:
                     import json as _json
@@ -283,10 +230,9 @@ _starlette = Starlette(
         # Web pages + API endpoints
         *setup_routes,
 
-        # MCP connector -- everything under /garmin/ goes to GarminMCPRouter
-        # Note: /mcp/ and /connect/ are intercepted by Railway's proxy layer.
-        # /api/* is also intercepted by Railway's edge on .up.railway.app domains
-        # (returns 421 Misdirected Request). Using /garmin/ avoids all conflicts.
+        # MCP connector — all requests to /garmin (and /garmin/) go here.
+        # Token is in the query string: /garmin/?token={access_token}
+        # Path-based tokens (/garmin/{token}) caused FastMCP to return 421.
         Mount("/garmin", app=_mcp_router),
     ],
 )
