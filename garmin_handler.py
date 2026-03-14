@@ -1132,10 +1132,10 @@ class GarminDataHandler:
                 sleep_seconds = sleep_data.get("sleepTimeSeconds", 0)
                 sleep_hours = sleep_seconds / 3600 if sleep_seconds else 0
                 context_parts.append(f"Total Sleep: {sleep_hours:.1f} hours")
-                context_parts.append(f"Deep Sleep: {sleep_data.get('deepSleepSeconds', 0) / 3600:.1f} hours")
-                context_parts.append(f"Light Sleep: {sleep_data.get('lightSleepSeconds', 0) / 3600:.1f} hours")
-                context_parts.append(f"REM Sleep: {sleep_data.get('remSleepSeconds', 0) / 3600:.1f} hours")
-                context_parts.append(f"Awake Time: {sleep_data.get('awakeSleepSeconds', 0) / 3600:.1f} hours")
+                context_parts.append(f"Deep Sleep: {(sleep_data.get('deepSleepSeconds') or 0) / 3600:.1f} hours")
+                context_parts.append(f"Light Sleep: {(sleep_data.get('lightSleepSeconds') or 0) / 3600:.1f} hours")
+                context_parts.append(f"REM Sleep: {(sleep_data.get('remSleepSeconds') or 0) / 3600:.1f} hours")
+                context_parts.append(f"Awake Time: {(sleep_data.get('awakeSleepSeconds') or 0) / 3600:.1f} hours")
                 context_parts.append("")
         
         # Body Battery data
