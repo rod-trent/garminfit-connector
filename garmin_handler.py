@@ -1223,9 +1223,11 @@ class GarminDataHandler:
             if food_log:
                 context_parts.append("=== Food Log ===")
                 context_parts.append(f"Number of meals logged: {len(food_log)}")
+                if food_log:
+                    logger.info(f"Sample meal keys: {list(food_log[0].keys()) if isinstance(food_log[0], dict) else food_log[0]}")
                 for i, meal in enumerate(food_log[:5], 1):  # Show up to 5 meals
-                    meal_name = meal.get('name', meal.get('foodName', 'Unknown'))
-                    meal_calories = meal.get('calories', 0)
+                    meal_name = meal.get('mealName', meal.get('name', meal.get('foodName', meal.get('mealTypeId', 'Unknown'))))
+                    meal_calories = meal.get('totalCalories', meal.get('calories', meal.get('kcal', 0)))
                     context_parts.append(f"{i}. {meal_name} - {meal_calories} kcal")
                 context_parts.append("")
         
