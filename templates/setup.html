@@ -81,6 +81,17 @@
       font-size: 0.875rem;
       margin-bottom: 1rem;
     }
+    .rate-limit-box {
+      background: #1C1A0E;
+      border: 1px solid #3A3218;
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      color: #C89A38;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+      line-height: 1.5;
+    }
+    .rate-limit-box strong { color: #E8B84B; }
     .spinner {
       display: inline-block;
       width: 18px; height: 18px;
@@ -124,6 +135,10 @@
     <!-- Step 1: Credentials form -->
     <div id="step-credentials" class="section active">
       <div id="cred-error" class="error-box" style="display:none;"></div>
+      <div id="rate-limit-box" class="rate-limit-box" style="display:none;">
+        ⏳ <strong>Garmin is temporarily rate-limiting new connections.</strong><br>
+        Too many users are connecting at the same time. Please wait <strong id="rl-countdown">60</strong> seconds and try again.
+      </div>
       <div>
         <label for="email">Garmin Connect Email</label>
         <input type="email" id="email" placeholder="you@example.com" autocomplete="username" />
@@ -168,6 +183,7 @@
 
   <script>
     let pendingSessionId = null;
+    let _rlTimer = null;
 
     function showError(elementId, message) {
       const el = document.getElementById(elementId);
@@ -187,16 +203,44 @@
     function resetToStep1() {
       pendingSessionId = null;
       hideError('cred-error');
+      document.getElementById('rate-limit-box').style.display = 'none';
+      if (_rlTimer) { clearInterval(_rlTimer); _rlTimer = null; }
       document.getElementById('password').value = '';
       document.getElementById('btn-connect').disabled = false;
       document.getElementById('btn-connect').innerHTML = 'Connect Garmin Account';
       showSection('step-credentials');
     }
 
+    function startRateLimitCountdown(seconds) {
+      const btn = document.getElementById('btn-connect');
+      const box = document.getElementById('rate-limit-box');
+      const countEl = document.getElementById('rl-countdown');
+      box.style.display = 'block';
+      hideError('cred-error');
+      btn.disabled = true;
+      btn.innerHTML = `⏳ Retry in ${seconds}s…`;
+      countEl.textContent = seconds;
+      let remaining = seconds;
+      if (_rlTimer) clearInterval(_rlTimer);
+      _rlTimer = setInterval(() => {
+        remaining--;
+        countEl.textContent = remaining;
+        btn.innerHTML = `⏳ Retry in ${remaining}s…`;
+        if (remaining <= 0) {
+          clearInterval(_rlTimer);
+          _rlTimer = null;
+          box.style.display = 'none';
+          btn.disabled = false;
+          btn.innerHTML = 'Connect Garmin Account';
+        }
+      }, 1000);
+    }
+
     async function startSetup() {
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       hideError('cred-error');
+      document.getElementById('rate-limit-box').style.display = 'none';
 
       if (!email || !password) {
         showError('cred-error', 'Please enter your email and password.');
@@ -214,6 +258,11 @@
           body: JSON.stringify({ email, password }),
         });
         const data = await resp.json();
+
+        if (resp.status === 429 || data.rate_limited) {
+          startRateLimitCountdown(data.retry_after || 60);
+          return;
+        }
 
         if (!resp.ok) {
           showError('cred-error', data.error || 'Authentication failed. Check your credentials.');

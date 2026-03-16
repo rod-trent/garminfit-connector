@@ -16,6 +16,7 @@ All API responses are JSON. HTML pages use Jinja2 templates.
 
 import asyncio
 import os
+import time
 from datetime import datetime
 
 import garth
@@ -37,6 +38,22 @@ from app.database import SessionLocal, User
 # so two simultaneous logins would overwrite each other's token state.
 # Setup is rare (one-off per user) so a simple lock is fine.
 _setup_lock = asyncio.Lock()
+
+# Minimum seconds between sequential Garmin SSO login attempts.
+# All users share the same outgoing Railway IP; Garmin rate-limits by IP,
+# so we must pace ourselves even when requests are perfectly serialized.
+_MIN_LOGIN_INTERVAL_SECS: float = 4.0
+_last_login_time: float = 0.0
+
+# Retry schedule for 429 errors: how many extra seconds to wait before each attempt.
+# Total worst-case additional wait = 0 + 12 + 35 = 47 s (well within Railway's 60s timeout).
+_RETRY_DELAYS = (0, 12, 35)
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    """Return True if the exception is a Garmin SSO 429 / rate-limit error."""
+    msg = str(exc)
+    return "429" in msg or "Too Many Requests" in msg or "rate" in msg.lower()
 
 # ---------------------------------------------------------------------------
 # Jinja2 template environment
@@ -157,14 +174,53 @@ async def api_setup_start(request: Request) -> JSONResponse:
 
     # Serialize login requests — garth uses a module-level global client
     async with _setup_lock:
-        try:
-            result = await loop.run_in_executor(
-                None,
-                lambda: garth.login(email, password, return_on_mfa=True),
-            )
-        except Exception as e:
+        global _last_login_time
+
+        # Enforce minimum interval between sequential logins so we don't
+        # hammer Garmin's SSO from the same shared Railway IP address.
+        elapsed = time.monotonic() - _last_login_time
+        wait_secs = _MIN_LOGIN_INTERVAL_SECS - elapsed
+        if wait_secs > 0:
+            await asyncio.sleep(wait_secs)
+
+        # Attempt login with exponential backoff on 429 errors.
+        result = None
+        last_exc: Exception | None = None
+
+        for attempt, extra_delay in enumerate(_RETRY_DELAYS):
+            if extra_delay:
+                await asyncio.sleep(extra_delay)
+            try:
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: garth.login(email, password, return_on_mfa=True),
+                )
+                last_exc = None
+                break  # success
+            except Exception as e:
+                last_exc = e
+                if _is_rate_limited(e) and attempt < len(_RETRY_DELAYS) - 1:
+                    print(f"[setup] 429 from Garmin (attempt {attempt + 1}), retrying after {_RETRY_DELAYS[attempt + 1]}s…")
+                    continue
+                break  # non-429 error or exhausted retries
+
+        _last_login_time = time.monotonic()
+
+        if last_exc is not None:
+            if _is_rate_limited(last_exc):
+                return JSONResponse(
+                    {
+                        "error": (
+                            "Garmin is temporarily rate-limiting new connections from this server. "
+                            "Please wait 60 seconds and try again."
+                        ),
+                        "rate_limited": True,
+                        "retry_after": 60,
+                    },
+                    status_code=429,
+                )
             return JSONResponse(
-                {"error": f"Authentication failed: {e}"},
+                {"error": f"Authentication failed: {last_exc}"},
                 status_code=400,
             )
 
