@@ -12,21 +12,33 @@ Endpoints:
   POST /api/disconnect       → revoke user's access token
 
 All API responses are JSON. HTML pages use Jinja2 templates.
+
+MFA design
+----------
+garth's login() is fully synchronous.  When MFA is required it calls a
+`prompt_mfa` callable to collect the code.  We inject an MFABridge as that
+callable; it blocks the login thread until the user submits the code in a
+second HTTP request (api_setup_mfa).
+
+Each login uses its own isolated garth.http.Client instance, so concurrent
+users never share global garth state and there is no risk of one user's SSO
+session corrupting another's.
 """
 
 import asyncio
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-import garth
-from garth.sso import resume_login as garth_resume_login
+from garth.http import Client as GarthClient
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from app.auth_manager import (
+    MFABridge,
     create_mfa_session,
     encrypt_token,
     generate_access_token,
@@ -34,26 +46,63 @@ from app.auth_manager import (
 )
 from app.database import SessionLocal, User
 
-# Serialize concurrent setup requests: garth uses a module-level global client,
-# so two simultaneous logins would overwrite each other's token state.
-# Setup is rare (one-off per user) so a simple lock is fine.
-_setup_lock = asyncio.Lock()
+# ---------------------------------------------------------------------------
+# Thread pool for blocking garth login calls
+# ---------------------------------------------------------------------------
 
-# Minimum seconds between sequential Garmin SSO login attempts.
-# All users share the same outgoing Railway IP; Garmin rate-limits by IP,
-# so we must pace ourselves even when requests are perfectly serialized.
+# Each pending MFA session holds one thread (blocked at prompt_mfa).
+# 20 workers lets us handle 20 simultaneous in-flight logins.
+_login_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix="garmin-login")
+
+# ---------------------------------------------------------------------------
+# Rate limiting — pace outgoing SSO requests to Garmin.
+# All Railway users share one outgoing IP; Garmin rate-limits by IP.
+# We serialise the *initial* SSO phase with a lock + minimum interval.
+# Once a thread is blocked at the MFA prompt it holds no lock, so other
+# users can continue logging in while the first user types their code.
+# ---------------------------------------------------------------------------
+
+_setup_lock = asyncio.Lock()
 _MIN_LOGIN_INTERVAL_SECS: float = 4.0
 _last_login_time: float = 0.0
-
-# Retry schedule for 429 errors: how many extra seconds to wait before each attempt.
-# Total worst-case additional wait = 0 + 12 + 35 = 47 s (well within Railway's 60s timeout).
-_RETRY_DELAYS = (0, 12, 35)
 
 
 def _is_rate_limited(exc: Exception) -> bool:
     """Return True if the exception is a Garmin SSO 429 / rate-limit error."""
     msg = str(exc)
     return "429" in msg or "Too Many Requests" in msg or "rate" in msg.lower()
+
+
+async def _wait_login_or_mfa(
+    login_future,
+    bridge: MFABridge,
+    loop: asyncio.AbstractEventLoop,
+    timeout: float = 60.0,
+) -> str:
+    """
+    Poll until the login thread either completes or triggers the MFA prompt.
+
+    Returns:
+      "mfa"     — bridge.mfa_triggered is set (thread is blocked at prompt_mfa)
+      "done"    — login_future has completed (success or exception)
+      "timeout" — neither happened within `timeout` seconds
+    """
+    wrapped = asyncio.wrap_future(login_future, loop=loop)
+    deadline = loop.time() + timeout
+
+    while loop.time() < deadline:
+        if bridge.mfa_triggered.is_set():
+            return "mfa"
+        if wrapped.done():
+            return "done"
+        try:
+            await asyncio.wait_for(asyncio.shield(wrapped), timeout=0.15)
+            return "done"
+        except asyncio.TimeoutError:
+            continue
+
+    return "timeout"
+
 
 # ---------------------------------------------------------------------------
 # Jinja2 template environment
@@ -146,11 +195,12 @@ async def _get_display_name(token_b64: str) -> str | None:
 
 async def api_setup_start(request: Request) -> JSONResponse:
     """
-    Begin Garmin authentication using garth's low-level API directly.
+    Begin Garmin authentication using an isolated garth.http.Client.
 
-    garth.login(email, password, return_on_mfa=True) returns:
-      - A falsy value / None  →  success, no MFA needed
-      - A tuple (oauth1_token, client_state)  →  MFA required
+    Each call creates its own GarthClient so that concurrent logins never
+    share global garth state.  An MFABridge is injected as the prompt_mfa
+    callback; if Garmin requires MFA the login thread blocks inside
+    bridge.prompt_mfa() until api_setup_mfa() provides the code.
 
     Request body: {"email": str, "password": str}
 
@@ -158,6 +208,7 @@ async def api_setup_start(request: Request) -> JSONResponse:
       200 {"mcp_url": str}                       — success, no MFA
       200 {"mfa_required": true, "session_id": str} — MFA required
       400 {"error": str}                          — bad credentials or other error
+      429 {"error": str, "rate_limited": true, "retry_after": 60}
     """
     try:
         body = await request.json()
@@ -172,72 +223,69 @@ async def api_setup_start(request: Request) -> JSONResponse:
 
     loop = asyncio.get_event_loop()
 
-    # Serialize login requests — garth uses a module-level global client
+    # --- Rate-limit phase: hold lock only for the initial SSO request ------
     async with _setup_lock:
         global _last_login_time
 
-        # Enforce minimum interval between sequential logins so we don't
-        # hammer Garmin's SSO from the same shared Railway IP address.
+        # Enforce minimum interval between sequential logins
         elapsed = time.monotonic() - _last_login_time
         wait_secs = _MIN_LOGIN_INTERVAL_SECS - elapsed
         if wait_secs > 0:
             await asyncio.sleep(wait_secs)
 
-        # Attempt login with exponential backoff on 429 errors.
-        result = None
-        last_exc: Exception | None = None
+        isolated_client = GarthClient()
+        bridge = MFABridge()
 
-        for attempt, extra_delay in enumerate(_RETRY_DELAYS):
-            if extra_delay:
-                await asyncio.sleep(extra_delay)
-            try:
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: garth.login(email, password, return_on_mfa=True),
-                )
-                last_exc = None
-                break  # success
-            except Exception as e:
-                last_exc = e
-                if _is_rate_limited(e) and attempt < len(_RETRY_DELAYS) - 1:
-                    print(f"[setup] 429 from Garmin (attempt {attempt + 1}), retrying after {_RETRY_DELAYS[attempt + 1]}s…")
-                    continue
-                break  # non-429 error or exhausted retries
+        # Submit login to thread pool — the thread may block inside
+        # bridge.prompt_mfa() if MFA is required.
+        login_future = _login_executor.submit(
+            lambda: isolated_client.login(email, password, prompt_mfa=bridge.prompt_mfa)
+        )
+
+        # Wait until the thread either reaches the MFA prompt or finishes.
+        # While we wait we still hold _setup_lock so only one SSO handshake
+        # is in flight at a time.
+        outcome = await _wait_login_or_mfa(login_future, bridge, loop, timeout=60.0)
 
         _last_login_time = time.monotonic()
+        # Lock released here — if outcome=="mfa" the login thread is
+        # blocked at prompt_mfa() and is no longer making SSO requests.
 
-        if last_exc is not None:
-            if _is_rate_limited(last_exc):
-                return JSONResponse(
-                    {
-                        "error": (
-                            "Garmin is temporarily rate-limiting new connections from this server. "
-                            "Please wait 60 seconds and try again."
-                        ),
-                        "rate_limited": True,
-                        "retry_after": 60,
-                    },
-                    status_code=429,
-                )
+    # --- Interpret outcome --------------------------------------------------
+
+    if outcome == "mfa":
+        session_id = create_mfa_session(
+            garmin_email=email,
+            mfa_bridge=bridge,
+            login_future=login_future,
+            isolated_client=isolated_client,
+        )
+        return JSONResponse({"mfa_required": True, "session_id": session_id})
+
+    # outcome == "done" (or "timeout" — treat as done, let result() raise)
+    try:
+        login_future.result(timeout=5)
+    except Exception as e:
+        print(f"[setup] login error: {type(e).__name__}: {e}")
+        if _is_rate_limited(e):
             return JSONResponse(
-                {"error": f"Authentication failed: {last_exc}"},
-                status_code=400,
+                {
+                    "error": (
+                        "Garmin is temporarily rate-limiting new connections from this server. "
+                        "Please wait 60 seconds and try again."
+                    ),
+                    "rate_limited": True,
+                    "retry_after": 60,
+                },
+                status_code=429,
             )
+        return JSONResponse(
+            {"error": f"Authentication failed: {e}"},
+            status_code=400,
+        )
 
-        if isinstance(result, tuple) and len(result) == 2:
-            # MFA required — result is (oauth1_token, client_state)
-            _oauth1_token, client_state = result
-            session_id = create_mfa_session(
-                garmin_client=None,
-                client_state=client_state,
-                email=email,
-            )
-            return JSONResponse({"mfa_required": True, "session_id": session_id})
-
-        # No MFA — garth.client now holds the tokens
-        token_b64 = garth.client.dumps()
-
-    # DB save and optional display_name lookup — outside the lock
+    # Success — isolated_client now has oauth1_token + oauth2_token set
+    token_b64 = isolated_client.dumps()
     display_name = await _get_display_name(token_b64)
     mcp_url = await _save_user_and_get_url(request, token_b64, display_name, email)
     return JSONResponse({"mcp_url": mcp_url})
@@ -251,8 +299,9 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
     """
     Complete Garmin authentication with MFA code.
 
-    Uses garth.sso.resume_login(client_state, mfa_code) to complete the flow
-    started in api_setup_start, then extracts the final token via garth.client.dumps().
+    Provides the code to the waiting MFABridge, which unblocks the login
+    thread.  We then await the thread's future to get the final result and
+    extract the token from the isolated GarthClient.
 
     Request body: {"session_id": str, "mfa_code": str}
 
@@ -278,34 +327,44 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    client_state = session.client_state
+    bridge: MFABridge = session.mfa_bridge
+    login_future = session.login_future
+    isolated_client = session.isolated_client
     loop = asyncio.get_event_loop()
 
-    async with _setup_lock:
-        try:
-            # garth.sso.resume_login takes the client_state from step 1 and the MFA code,
-            # returns (oauth1_token, oauth2_token) on success
-            resume_result = await loop.run_in_executor(
-                None,
-                lambda: garth_resume_login(client_state, mfa_code),
-            )
-            print(f"[MFA] resume_login result type={type(resume_result).__name__}, repr={resume_result!r:.300}")
+    # Provide the MFA code — this unblocks the login thread
+    bridge.submit_code(mfa_code)
 
-            # Unpack and inject into garth's global client, then serialize
-            oauth1_token, oauth2_token = resume_result
-            garth.client.oauth1_token = oauth1_token
-            garth.client.oauth2_token = oauth2_token
-            token_b64 = garth.client.dumps()
-            print(f"[MFA] token serialized OK, length={len(token_b64)}")
+    # Await the login thread to complete (up to 60 s)
+    try:
+        await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: login_future.result(timeout=60)),
+            timeout=65,
+        )
+    except asyncio.TimeoutError:
+        print(f"[MFA] login_future timed out for session {session_id}")
+        return JSONResponse(
+            {"error": "MFA authentication timed out. Please start the setup process again."},
+            status_code=400,
+        )
+    except Exception as e:
+        print(f"[MFA] login error: {type(e).__name__}: {e}")
+        return JSONResponse(
+            {"error": f"MFA authentication failed: {e}. Check the code and try again."},
+            status_code=400,
+        )
 
-        except Exception as e:
-            print(f"[MFA] completion error: {type(e).__name__}: {e}")
-            return JSONResponse(
-                {"error": f"MFA authentication failed: {e}. Check the code and try again."},
-                status_code=400,
-            )
+    # isolated_client now has oauth1_token + oauth2_token set by garth
+    try:
+        token_b64 = isolated_client.dumps()
+        print(f"[MFA] token serialized OK, length={len(token_b64)}")
+    except Exception as e:
+        print(f"[MFA] dumps() error: {type(e).__name__}: {e}")
+        return JSONResponse(
+            {"error": f"Garmin auth succeeded but failed to serialize token: {e}"},
+            status_code=500,
+        )
 
-    # DB save and optional display_name lookup — outside the lock
     display_name = await _get_display_name(token_b64)
     try:
         mcp_url = await _save_user_and_get_url(
@@ -317,6 +376,7 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
             {"error": f"Garmin auth succeeded but failed to save: {e}"},
             status_code=500,
         )
+
     return JSONResponse({"mcp_url": mcp_url})
 
 

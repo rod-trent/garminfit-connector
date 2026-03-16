@@ -12,6 +12,7 @@ For multi-dyno deployments, replace _pending with a Redis-backed store.
 
 import os
 import secrets
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -59,22 +60,61 @@ def generate_access_token() -> str:
 
 
 # ---------------------------------------------------------------------------
+# MFA Bridge — connects garth's synchronous prompt_mfa callback to the
+# async web handler across two separate HTTP requests (step 1 + step 2).
+# ---------------------------------------------------------------------------
+
+class MFABridge:
+    """
+    Thread-safe bridge between the blocking garth login thread and the
+    async web handler.
+
+    When garth encounters an MFA challenge it calls prompt_mfa(), which sets
+    mfa_triggered and then blocks until the user provides the code via
+    submit_code().  The web handler in api_setup_mfa() calls submit_code()
+    and then awaits the login thread's future to get the final tokens.
+    """
+
+    def __init__(self) -> None:
+        self._mfa_triggered = threading.Event()   # set when garth calls prompt_mfa
+        self._code_ready = threading.Event()       # set when submit_code() is called
+        self._code: str = ""
+
+    # Called by garth on the login thread
+    def prompt_mfa(self) -> str:
+        self._mfa_triggered.set()
+        self._code_ready.wait(timeout=300)         # wait up to 5 minutes for user
+        return self._code
+
+    @property
+    def mfa_triggered(self) -> threading.Event:
+        return self._mfa_triggered
+
+    # Called by api_setup_mfa on the asyncio thread
+    def submit_code(self, code: str) -> None:
+        self._code = code
+        self._code_ready.set()
+
+
+# ---------------------------------------------------------------------------
 # In-memory MFA pending session store
 # ---------------------------------------------------------------------------
 
 @dataclass
 class PendingMFASession:
     """
-    Holds the live garminconnect.Garmin instance mid-MFA.
+    Holds everything needed to complete a pending MFA login.
 
-    The garmin_client has an active garth.Client with live Garmin SSO session
-    cookies that are required to complete MFA. These cannot be serialized to
-    the database, so they live here in memory for up to 5 minutes.
+    The MFABridge + concurrent.futures.Future keep the garth login thread
+    alive and paused at the MFA prompt.  The isolated_client is the per-user
+    garth.http.Client instance that holds the live SSO session — it is NOT
+    the global garth.client, so other users' logins cannot corrupt it.
     """
     session_id: str
-    garmin_client: object          # garminconnect.Garmin instance
-    client_state: dict             # returned by garth on MFA — contains live Client
     garmin_email: str
+    mfa_bridge: MFABridge
+    login_future: object          # concurrent.futures.Future[None]
+    isolated_client: object       # garth.http.Client instance
     expires_at: datetime = field(default_factory=lambda: datetime.utcnow() + timedelta(minutes=5))
 
 
@@ -84,7 +124,12 @@ _pending: dict[str, PendingMFASession] = {}
 MFA_TTL_MINUTES = 5
 
 
-def create_mfa_session(garmin_client: object, client_state: dict, email: str) -> str:
+def create_mfa_session(
+    garmin_email: str,
+    mfa_bridge: MFABridge,
+    login_future: object,
+    isolated_client: object,
+) -> str:
     """
     Store a pending MFA session and return its session_id.
     The caller should return session_id to the setup page JS.
@@ -93,9 +138,10 @@ def create_mfa_session(garmin_client: object, client_state: dict, email: str) ->
     session_id = secrets.token_urlsafe(24)
     _pending[session_id] = PendingMFASession(
         session_id=session_id,
-        garmin_client=garmin_client,
-        client_state=client_state,
-        garmin_email=email,
+        garmin_email=garmin_email,
+        mfa_bridge=mfa_bridge,
+        login_future=login_future,
+        isolated_client=isolated_client,
     )
     return session_id
 
