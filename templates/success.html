@@ -139,6 +139,29 @@
       color: #8A90AA;
     }
     .tool-list span::before { content: "✓ "; color: #5CC98A; font-weight: bold; }
+    .support-box {
+      background: #131326;
+      border: 1px solid #1E1E38;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      text-align: center;
+    }
+    .support-box p { font-size: 0.85rem; color: #8A90AA; line-height: 1.6; margin-bottom: 0.75rem; }
+    .support-box strong { color: #C0C4D8; }
+    .btn-support {
+      display: inline-block;
+      padding: 0.55rem 1.25rem;
+      background: #3A5A3A;
+      color: #7ADA7A;
+      border: 1px solid #4A7A4A;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn-support:hover { background: #4A6E4A; color: #9AEA9A; }
     .footer-links {
       text-align: center;
       font-size: 0.8rem;
@@ -235,10 +258,17 @@
       </div>
     </div>
 
+    <div class="support-box">
+      <p>If you find <strong>Garmin Chat Connector</strong> useful, please consider supporting the project — it helps keep the service running and encourages continued development.</p>
+      <a class="btn-support" href="https://buy.stripe.com/bJe9AUeaYcdT46z1F75os00" target="_blank" rel="noopener">☕ Support for $4.99 / year</a>
+    </div>
+
     <div class="footer-links">
       Want to disconnect? <a href="/disconnect">Remove your Garmin connection</a>
       &nbsp;·&nbsp;
       <a href="/setup">Connect another account</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/rod-trent/Garmin-Chat-Forums/discussions" target="_blank" rel="noopener">Get support</a>
     </div>
   </div>
 
