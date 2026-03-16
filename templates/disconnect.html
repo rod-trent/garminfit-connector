@@ -4,11 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Garminfit Connector — Disconnect</title>
+  <link rel="icon" href="/static/icon.ico" type="image/x-icon" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: #f0f2f5;
+      background: #0D0D1C;
       min-height: 100vh;
       display: flex;
       align-items: center;
@@ -16,42 +17,47 @@
       padding: 1.5rem;
     }
     .card {
-      background: #fff;
+      background: #16162A;
+      border: 1px solid rgba(255,255,255,0.06);
       border-radius: 12px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
       padding: 2.5rem;
       max-width: 460px;
       width: 100%;
     }
-    .icon { font-size: 2rem; margin-bottom: 0.5rem; }
-    h1 { font-size: 1.5rem; font-weight: 700; color: #111; margin-bottom: 0.25rem; }
-    .subtitle { color: #555; font-size: 0.95rem; margin-bottom: 1.75rem; }
+    .icon { margin-bottom: 0.75rem; }
+    .icon img { width: 52px; height: 52px; border-radius: 10px; }
+    h1 { font-size: 1.5rem; font-weight: 700; color: #E8EAF2; margin-bottom: 0.25rem; }
+    .subtitle { color: #8A90AA; font-size: 0.95rem; margin-bottom: 1.75rem; }
     .warning-box {
-      background: #fff5f0;
-      border: 1px solid #f5c6a0;
+      background: #1C1208;
+      border: 1px solid #3A2810;
       border-radius: 8px;
       padding: 0.85rem 1rem;
       font-size: 0.875rem;
-      color: #7c3a00;
+      color: #C08040;
       margin-bottom: 1.5rem;
       line-height: 1.5;
     }
-    label { display: block; font-size: 0.875rem; font-weight: 600; color: #333; margin-bottom: 0.35rem; }
+    label { display: block; font-size: 0.875rem; font-weight: 600; color: #C0C4D8; margin-bottom: 0.35rem; }
     input[type="email"] {
       width: 100%;
       padding: 0.65rem 0.85rem;
-      border: 1.5px solid #d1d5db;
+      background: #0D0D1A;
+      border: 1.5px solid #2A2A46;
       border-radius: 8px;
       font-size: 1rem;
+      color: #E8EAF2;
       outline: none;
       transition: border-color 0.15s;
       margin-bottom: 1rem;
     }
-    input:focus { border-color: #cc3300; }
+    input::placeholder { color: #3E4260; }
+    input:focus { border-color: #8A2030; }
     .btn {
       width: 100%;
       padding: 0.75rem;
-      background: #cc3300;
+      background: #7A1E2A;
       color: #fff;
       border: none;
       border-radius: 8px;
@@ -60,30 +66,31 @@
       cursor: pointer;
       transition: background 0.15s;
     }
-    .btn:hover { background: #a82900; }
-    .btn:disabled { background: #e8a898; cursor: not-allowed; }
+    .btn:hover { background: #9A2838; }
+    .btn:disabled { background: #22223A; color: #4A4E68; cursor: not-allowed; }
     .error-box {
-      background: #fff0f0;
-      border: 1px solid #f5c6c6;
+      background: #1E0E0E;
+      border: 1px solid #3E1E1E;
       border-radius: 8px;
       padding: 0.75rem 1rem;
-      color: #c0392b;
+      color: #E06060;
       font-size: 0.875rem;
       margin-bottom: 1rem;
     }
     .success-box {
-      background: #f0fff4;
-      border: 1px solid #a8d5b8;
+      background: #111E1A;
+      border: 1px solid #1E3830;
       border-radius: 8px;
       padding: 1rem 1.25rem;
-      color: #1a5c32;
+      color: #5CC98A;
       font-size: 0.9rem;
       line-height: 1.6;
     }
+    .success-box a { color: #5CC98A; font-weight: 600; }
     .spinner {
       display: inline-block;
       width: 18px; height: 18px;
-      border: 2px solid rgba(255,255,255,0.4);
+      border: 2px solid rgba(255,255,255,0.15);
       border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
@@ -95,16 +102,16 @@
       margin-top: 1.5rem;
       text-align: center;
       font-size: 0.8rem;
-      color: #888;
+      color: #5A5F78;
     }
-    .footer-links a { color: #0066cc; text-decoration: none; }
-    .footer-links a:hover { text-decoration: underline; }
+    .footer-links a { color: #7080B8; text-decoration: none; }
+    .footer-links a:hover { color: #A0B0D8; text-decoration: underline; }
     #result { display: none; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon">🔌</div>
+    <div class="icon"><img src="/static/icon.ico" alt="Garminfit" /></div>
     <h1>Disconnect Garmin</h1>
     <p class="subtitle">Enter your Garmin Connect email to revoke your MCP connection.</p>
 
@@ -165,7 +172,7 @@
         result.innerHTML = `
           ✅ <strong>Disconnected successfully.</strong><br><br>
           ${data.message}<br><br>
-          <a href="/setup" style="color:#1a5c32; font-weight:600;">Reconnect Garmin →</a>
+          <a href="/setup">Reconnect Garmin →</a>
         `;
         result.style.display = 'block';
 

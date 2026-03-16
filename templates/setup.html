@@ -4,11 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Garminfit Connector — Setup</title>
+  <link rel="icon" href="/static/icon.ico" type="image/x-icon" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: #f0f2f5;
+      background: #0D0D1C;
       min-height: 100vh;
       display: flex;
       align-items: center;
@@ -16,42 +17,47 @@
       padding: 1.5rem;
     }
     .card {
-      background: #fff;
+      background: #16162A;
+      border: 1px solid rgba(255,255,255,0.06);
       border-radius: 12px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
       padding: 2.5rem;
       max-width: 460px;
       width: 100%;
     }
-    .logo { font-size: 2rem; margin-bottom: 0.5rem; }
-    h1 { font-size: 1.5rem; font-weight: 700; color: #111; margin-bottom: 0.25rem; }
-    .subtitle { color: #555; font-size: 0.95rem; margin-bottom: 1.75rem; }
+    .logo { margin-bottom: 0.75rem; }
+    .logo img { width: 52px; height: 52px; border-radius: 10px; }
+    h1 { font-size: 1.5rem; font-weight: 700; color: #E8EAF2; margin-bottom: 0.25rem; }
+    .subtitle { color: #8A90AA; font-size: 0.95rem; margin-bottom: 1.75rem; }
     .security-note {
-      background: #f0f9f0;
-      border: 1px solid #c3e6cb;
+      background: #111E1A;
+      border: 1px solid #1E3830;
       border-radius: 8px;
       padding: 0.85rem 1rem;
       font-size: 0.85rem;
-      color: #2d6a4f;
+      color: #5CC98A;
       margin-bottom: 1.5rem;
       line-height: 1.5;
     }
-    label { display: block; font-size: 0.875rem; font-weight: 600; color: #333; margin-bottom: 0.35rem; }
+    label { display: block; font-size: 0.875rem; font-weight: 600; color: #C0C4D8; margin-bottom: 0.35rem; }
     input[type="email"], input[type="password"], input[type="text"] {
       width: 100%;
       padding: 0.65rem 0.85rem;
-      border: 1.5px solid #d1d5db;
+      background: #0D0D1A;
+      border: 1.5px solid #2A2A46;
       border-radius: 8px;
       font-size: 1rem;
+      color: #E8EAF2;
       outline: none;
       transition: border-color 0.15s;
       margin-bottom: 1rem;
     }
-    input:focus { border-color: #0066cc; }
+    input::placeholder { color: #3E4260; }
+    input:focus { border-color: #5A6EAA; }
     .btn {
       width: 100%;
       padding: 0.75rem;
-      background: #0066cc;
+      background: #4A5C96;
       color: #fff;
       border: none;
       border-radius: 8px;
@@ -60,27 +66,25 @@
       cursor: pointer;
       transition: background 0.15s;
     }
-    .btn:hover { background: #0052a3; }
-    .btn:disabled { background: #9bb8d8; cursor: not-allowed; }
-    .btn-secondary {
-      background: #6c757d;
-    }
-    .btn-secondary:hover { background: #5a6268; }
+    .btn:hover { background: #5A6EAA; }
+    .btn:disabled { background: #22223A; color: #4A4E68; cursor: not-allowed; }
+    .btn-secondary { background: #252540; color: #8A90AA; }
+    .btn-secondary:hover { background: #2E2E50; color: #C0C4D8; }
     .section { display: none; }
     .section.active { display: block; }
     .error-box {
-      background: #fff0f0;
-      border: 1px solid #f5c6c6;
+      background: #1E0E0E;
+      border: 1px solid #3E1E1E;
       border-radius: 8px;
       padding: 0.75rem 1rem;
-      color: #c0392b;
+      color: #E06060;
       font-size: 0.875rem;
       margin-bottom: 1rem;
     }
     .spinner {
       display: inline-block;
       width: 18px; height: 18px;
-      border: 2px solid rgba(255,255,255,0.4);
+      border: 2px solid rgba(255,255,255,0.15);
       border-top-color: #fff;
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
@@ -89,27 +93,27 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .mfa-info {
-      background: #fff8e6;
-      border: 1px solid #ffd166;
+      background: #1C1A0E;
+      border: 1px solid #3A3218;
       border-radius: 8px;
       padding: 0.85rem 1rem;
       font-size: 0.875rem;
-      color: #7c5a00;
+      color: #C89A38;
       margin-bottom: 1rem;
     }
     .footer-links {
       margin-top: 1.5rem;
       text-align: center;
       font-size: 0.8rem;
-      color: #888;
+      color: #5A5F78;
     }
-    .footer-links a { color: #0066cc; text-decoration: none; }
-    .footer-links a:hover { text-decoration: underline; }
+    .footer-links a { color: #7080B8; text-decoration: none; }
+    .footer-links a:hover { color: #A0B0D8; text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">🏃</div>
+    <div class="logo"><img src="/static/icon.ico" alt="Garminfit" /></div>
     <h1>Connect Garmin to Claude</h1>
     <p class="subtitle">Enter your Garmin Connect credentials to get a personal MCP URL for the Claude app.</p>
 
@@ -135,7 +139,7 @@
     <div id="step-mfa" class="section">
       <div class="mfa-info">
         📱 Your Garmin account has two-factor authentication enabled. Enter the code from your authenticator app or SMS.
-        <br><small style="color:#a07000;">This code expires in ~5 minutes.</small>
+        <br><small style="color:#8A7020;">This code expires in ~5 minutes.</small>
       </div>
       <div id="mfa-error" class="error-box" style="display:none;"></div>
       <div>
@@ -147,10 +151,10 @@
       <button class="btn btn-secondary" style="margin-top:0.75rem;" onclick="resetToStep1()">← Start Over</button>
     </div>
 
-    <!-- Step 3: Success — redirect to success.html via JS -->
+    <!-- Step 3: Loading -->
     <div id="step-loading" class="section">
-      <p style="text-align:center; color:#555; padding: 1.5rem 0;">
-        <span class="spinner" style="border-top-color:#0066cc; border-color: rgba(0,102,204,0.3);"></span>
+      <p style="text-align:center; color:#8A90AA; padding: 1.5rem 0;">
+        <span class="spinner"></span>
         Authenticating with Garmin…
       </p>
     </div>

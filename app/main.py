@@ -40,6 +40,7 @@ import sys
 
 from starlette.applications import Starlette
 from starlette.routing import Mount
+from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 # ---------------------------------------------------------------------------
@@ -229,6 +230,9 @@ _starlette = Starlette(
     routes=[
         # Web pages + API endpoints
         *setup_routes,
+
+        # Static assets (favicon, etc.)
+        Mount("/static", app=StaticFiles(directory="static"), name="static"),
 
         # MCP connector — all requests to /garmin (and /garmin/) go here.
         # Token is in the query string: /garmin/?token={access_token}
