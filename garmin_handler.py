@@ -868,16 +868,19 @@ class GarminDataHandler:
             data = self.client.get_nutrition_daily_food_log(date)
             if data:
                 logger.info(f"Nutrition food log raw keys: {list(data.keys())}")
+                content = data.get('dailyNutritionContent', {})
+                if content:
+                    logger.info(f"dailyNutritionContent keys: {list(content.keys())}")
                 nutrition_data.update({
                     'date': date,
-                    'calories_consumed': data.get('totalCalories', data.get('consumedCalories', 0)),
-                    'protein_g': data.get('totalProtein', data.get('protein', 0)),
-                    'carbs_g': data.get('totalCarbs', data.get('carbs', 0)),
-                    'fat_g': data.get('totalFat', data.get('fat', 0)),
-                    'fiber_g': data.get('totalFiber', data.get('fiber', 0)),
-                    'sugar_g': data.get('totalSugar', data.get('sugar', 0)),
-                    'sodium_mg': data.get('totalSodium', data.get('sodium', 0)),
-                    'water_ml': data.get('totalWater', data.get('water', 0)),
+                    'calories_consumed': content.get('calories', content.get('totalCalories', data.get('totalCalories', 0))),
+                    'protein_g': content.get('protein', content.get('totalProtein', 0)),
+                    'carbs_g': content.get('carbohydrate', content.get('totalCarbs', content.get('carbs', 0))),
+                    'fat_g': content.get('fat', content.get('totalFat', 0)),
+                    'fiber_g': content.get('fiber', content.get('totalFiber', 0)),
+                    'sugar_g': content.get('sugar', content.get('totalSugar', 0)),
+                    'sodium_mg': content.get('sodium', content.get('totalSodium', 0)),
+                    'water_ml': content.get('water', content.get('totalWater', 0)),
                 })
                 logger.debug("Nutrition data loaded from get_nutrition_daily_food_log")
                 return nutrition_data
@@ -930,16 +933,16 @@ class GarminDataHandler:
             date = datetime.now().strftime("%Y-%m-%d")
         
         try:
-            data = self.client.get_nutrition_daily_meals(date)
+            # get_nutrition_daily_food_log has mealDetails with per-meal nutrition
+            data = self.client.get_nutrition_daily_food_log(date)
             if data:
-                logger.info(f"Nutrition meals raw keys: {list(data.keys())}")
-                # Response is typically {"meals": [...]} or a list directly
-                meals = data.get('meals', data) if isinstance(data, dict) else data
-                if isinstance(meals, list):
-                    return meals
+                meal_details = data.get('mealDetails', [])
+                if meal_details:
+                    logger.info(f"mealDetails sample keys: {list(meal_details[0].keys()) if meal_details and isinstance(meal_details[0], dict) else meal_details}")
+                    return meal_details
             return []
         except AttributeError:
-            logger.debug("get_nutrition_daily_meals method not available")
+            logger.debug("get_nutrition_daily_food_log method not available")
             return []
         except Exception as e:
             logger.debug(f"Food log not available: {e}")
