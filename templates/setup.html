@@ -257,7 +257,21 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         });
-        const data = await resp.json();
+
+        // Parse JSON safely — server may return HTML on unexpected 500 errors
+        let data = {};
+        try {
+          data = await resp.json();
+        } catch (_) {
+          const text = await resp.text().catch(() => '');
+          const hint = text.length > 0
+            ? ` Server responded with: ${text.substring(0, 200)}`
+            : '';
+          showError('cred-error', `Server error (${resp.status}).${hint} Please try again or check server logs.`);
+          btn.disabled = false;
+          btn.innerHTML = 'Connect Garmin Account';
+          return;
+        }
 
         if (resp.status === 429 || data.rate_limited) {
           startRateLimitCountdown(data.retry_after || 60);
@@ -282,7 +296,7 @@
         window.location.href = '/setup/success?url=' + encodeURIComponent(data.mcp_url);
 
       } catch (err) {
-        showError('cred-error', 'Network error. Please try again.');
+        showError('cred-error', `Network error: ${err.message || err}. Check your connection and try again.`);
         btn.disabled = false;
         btn.innerHTML = 'Connect Garmin Account';
       }
@@ -307,7 +321,21 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: pendingSessionId, mfa_code: mfaCode }),
         });
-        const data = await resp.json();
+
+        // Parse JSON safely — server may return HTML on unexpected 500 errors
+        let data = {};
+        try {
+          data = await resp.json();
+        } catch (_) {
+          const text = await resp.text().catch(() => '');
+          const hint = text.length > 0
+            ? ` Server responded with: ${text.substring(0, 200)}`
+            : '';
+          showError('mfa-error', `Server error (${resp.status}).${hint} Please try again or check server logs.`);
+          btn.disabled = false;
+          btn.innerHTML = 'Verify &amp; Connect';
+          return;
+        }
 
         if (!resp.ok) {
           showError('mfa-error', data.error || 'MFA verification failed. Try again.');
@@ -319,7 +347,7 @@
         window.location.href = '/setup/success?url=' + encodeURIComponent(data.mcp_url);
 
       } catch (err) {
-        showError('mfa-error', 'Network error. Please try again.');
+        showError('mfa-error', `Network error: ${err.message || err}. Check your connection and try again.`);
         btn.disabled = false;
         btn.innerHTML = 'Verify &amp; Connect';
       }

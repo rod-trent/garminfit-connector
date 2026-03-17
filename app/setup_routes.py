@@ -285,9 +285,26 @@ async def api_setup_start(request: Request) -> JSONResponse:
         )
 
     # Success — isolated_client now has oauth1_token + oauth2_token set
-    token_b64 = isolated_client.dumps()
+    try:
+        token_b64 = isolated_client.dumps()
+    except Exception as e:
+        print(f"[setup] dumps() error: {type(e).__name__}: {e}")
+        return JSONResponse(
+            {"error": f"Garmin auth succeeded but failed to serialize token: {e}"},
+            status_code=500,
+        )
+
     display_name = await _get_display_name(token_b64)
-    mcp_url = await _save_user_and_get_url(request, token_b64, display_name, email)
+
+    try:
+        mcp_url = await _save_user_and_get_url(request, token_b64, display_name, email)
+    except Exception as e:
+        print(f"[setup] save_user error: {type(e).__name__}: {e}")
+        return JSONResponse(
+            {"error": f"Garmin auth succeeded but failed to save your account: {e}"},
+            status_code=500,
+        )
+
     return JSONResponse({"mcp_url": mcp_url})
 
 
