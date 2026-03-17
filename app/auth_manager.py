@@ -4,7 +4,20 @@ Authentication utilities:
   - In-memory MFA pending session store (5-minute TTL)
   - Access token generation for user MCP URLs
 
-NOTE: The pending MFA sessions are stored in-memory on a single Railway dyno.
+MFA design (v2 — garth return_on_mfa)
+--------------------------------------
+garth 0.6+ exposes sso.login(return_on_mfa=True) which returns immediately with
+a client_state dict when MFA is required, instead of blocking inside a callback.
+sso.resume_login(client_state, mfa_code) then completes the login in a second
+call.  This removes the need for a blocking thread bridge entirely, which was
+the root cause of the 401 at the OAuth preauthorized endpoint — the old bridge
+kept the SSO session open while the user typed, and the CAS service ticket
+could expire before the OAuth exchange had a chance to run.
+
+The PendingMFASession now stores just the garth client_state dict and the
+isolated garth.http.Client so resume_login can complete the flow.
+
+NOTE: Pending MFA sessions are stored in-memory on a single Railway dyno.
 If the server restarts during a user's 5-minute MFA window, their session is
 lost and they must restart the setup process. This is acceptable for V1.
 For multi-dyno deployments, replace _pending with a Redis-backed store.
@@ -12,7 +25,6 @@ For multi-dyno deployments, replace _pending with a Redis-backed store.
 
 import os
 import secrets
-import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -50,7 +62,7 @@ def generate_access_token() -> str:
     """
     Generate a cryptographically random URL-safe token (~22 chars).
     This is the token embedded in the user's MCP URL path:
-      https://garminfit-connector.railway.app/api/garmin/{access_token}
+      https://garminfit-connector.railway.app/garmin/?token={access_token}
 
     token_urlsafe(16) produces a base64url string (a-z A-Z 0-9 - _)
     that is shorter and less likely to be flagged by WAF rules than a
@@ -60,62 +72,30 @@ def generate_access_token() -> str:
 
 
 # ---------------------------------------------------------------------------
-# MFA Bridge — connects garth's synchronous prompt_mfa callback to the
-# async web handler across two separate HTTP requests (step 1 + step 2).
-# ---------------------------------------------------------------------------
-
-class MFABridge:
-    """
-    Thread-safe bridge between the blocking garth login thread and the
-    async web handler.
-
-    When garth encounters an MFA challenge it calls prompt_mfa(), which sets
-    mfa_triggered and then blocks until the user provides the code via
-    submit_code().  The web handler in api_setup_mfa() calls submit_code()
-    and then awaits the login thread's future to get the final tokens.
-    """
-
-    def __init__(self) -> None:
-        self._mfa_triggered = threading.Event()   # set when garth calls prompt_mfa
-        self._code_ready = threading.Event()       # set when submit_code() is called
-        self._code: str = ""
-
-    # Called by garth on the login thread
-    def prompt_mfa(self) -> str:
-        self._mfa_triggered.set()
-        self._code_ready.wait(timeout=300)         # wait up to 5 minutes for user
-        return self._code
-
-    @property
-    def mfa_triggered(self) -> threading.Event:
-        return self._mfa_triggered
-
-    # Called by api_setup_mfa on the asyncio thread
-    def submit_code(self, code: str) -> None:
-        self._code = code
-        self._code_ready.set()
-
-
-# ---------------------------------------------------------------------------
 # In-memory MFA pending session store
 # ---------------------------------------------------------------------------
 
 @dataclass
 class PendingMFASession:
     """
-    Holds everything needed to complete a pending MFA login.
+    Holds everything needed to complete a pending MFA login using garth's
+    native return_on_mfa / resume_login API.
 
-    The MFABridge + concurrent.futures.Future keep the garth login thread
-    alive and paused at the MFA prompt.  The isolated_client is the per-user
-    garth.http.Client instance that holds the live SSO session — it is NOT
-    the global garth.client, so other users' logins cannot corrupt it.
+    client_state: the dict returned by sso.login(return_on_mfa=True) when
+        MFA is required.  Contains {"signin_params": ..., "client": ...}.
+        The embedded "client" key IS isolated_client — same object.
+
+    isolated_client: the garth.http.Client instance used for this login.
+        Stored separately so we can call isolated_client.configure() and
+        isolated_client.dumps() after resume_login() returns the tokens.
     """
     session_id: str
     garmin_email: str
-    mfa_bridge: MFABridge
-    login_future: object          # concurrent.futures.Future[None]
-    isolated_client: object       # garth.http.Client instance
-    expires_at: datetime = field(default_factory=lambda: datetime.utcnow() + timedelta(minutes=5))
+    client_state: dict        # returned by sso.login(return_on_mfa=True)
+    isolated_client: object   # garth.http.Client instance (for configure + dumps)
+    expires_at: datetime = field(
+        default_factory=lambda: datetime.utcnow() + timedelta(minutes=5)
+    )
 
 
 # Module-level dict: session_id → PendingMFASession
@@ -126,8 +106,7 @@ MFA_TTL_MINUTES = 5
 
 def create_mfa_session(
     garmin_email: str,
-    mfa_bridge: MFABridge,
-    login_future: object,
+    client_state: dict,
     isolated_client: object,
 ) -> str:
     """
@@ -139,8 +118,7 @@ def create_mfa_session(
     _pending[session_id] = PendingMFASession(
         session_id=session_id,
         garmin_email=garmin_email,
-        mfa_bridge=mfa_bridge,
-        login_future=login_future,
+        client_state=client_state,
         isolated_client=isolated_client,
     )
     return session_id
