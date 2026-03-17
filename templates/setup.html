@@ -338,9 +338,25 @@
         }
 
         if (!resp.ok) {
-          showError('mfa-error', data.error || 'MFA verification failed. Try again.');
-          btn.disabled = false;
-          btn.innerHTML = 'Verify &amp; Connect';
+          // restart_required means the login session is dead — redirect to step 1
+          if (data.restart_required) {
+            showError('mfa-error', data.error || 'Session expired. Please start over.');
+            btn.disabled = false;
+            btn.innerHTML = 'Verify &amp; Connect';
+            // Give the user a moment to read the message, then auto-reset to step 1
+            setTimeout(() => {
+              resetToStep1();
+              showError('cred-error', '⚠️ ' + (data.error ||
+                'Your login session expired. Please enter your credentials again to get a fresh code.'));
+            }, 4000);
+          } else {
+            // Wrong/expired code — user can try a different code without restarting
+            showError('mfa-error', data.error || 'Invalid MFA code. Please try again.');
+            btn.disabled = false;
+            btn.innerHTML = 'Verify &amp; Connect';
+            document.getElementById('mfa-code').value = '';
+            setTimeout(() => document.getElementById('mfa-code').focus(), 50);
+          }
           return;
         }
 

@@ -361,13 +361,55 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
     except asyncio.TimeoutError:
         print(f"[MFA] login_future timed out for session {session_id}")
         return JSONResponse(
-            {"error": "MFA authentication timed out. Please start the setup process again."},
+            {
+                "error": "MFA authentication timed out. Please start the setup process again.",
+                "restart_required": True,
+            },
             status_code=400,
         )
     except Exception as e:
         print(f"[MFA] login error: {type(e).__name__}: {e}")
+        error_str = str(e)
+
+        # 401 at Garmin's OAuth preauthorized endpoint means the SSO/CAS ticket
+        # expired or Garmin rejected the token exchange (e.g. IP throttling).
+        # This is NOT a wrong-code error — the MFA code itself was likely fine,
+        # but the underlying login session can no longer be recovered.
+        # The only fix is to restart the login flow from scratch.
+        if "preauthorized" in error_str and "401" in error_str:
+            return JSONResponse(
+                {
+                    "error": (
+                        "Garmin's login session expired before the OAuth token exchange "
+                        "could complete. This usually happens when the MFA code takes too "
+                        "long to submit or Garmin's servers are busy. "
+                        "Please start the setup process again with a fresh code."
+                    ),
+                    "restart_required": True,
+                },
+                status_code=400,
+            )
+
+        # A 401 at the SSO/CAS layer (not preauthorized) typically means a wrong
+        # or already-used MFA code. The user can retry with a new code.
+        if "401" in error_str:
+            return JSONResponse(
+                {
+                    "error": (
+                        "Invalid or expired MFA code. "
+                        "Please enter the latest code from your authenticator app and try again."
+                    ),
+                    "restart_required": False,
+                },
+                status_code=400,
+            )
+
+        # All other failures (network errors, unexpected API responses, etc.)
         return JSONResponse(
-            {"error": f"MFA authentication failed: {e}. Check the code and try again."},
+            {
+                "error": f"MFA authentication failed: {e}. Please start the setup process again.",
+                "restart_required": True,
+            },
             status_code=400,
         )
 
