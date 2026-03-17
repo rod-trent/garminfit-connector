@@ -456,6 +456,21 @@ async def api_setup_start(request: Request) -> JSONResponse:
             backoff_factor=1.0,
         )
 
+        # Residential proxy support.
+        # Garmin's OAuth endpoints (connectapi.garmin.com/oauth-service/oauth/
+        # preauthorized) are protected by Cloudflare.  Requests from data-centre
+        # IPs (Railway, AWS, GCP, etc.) are rate-limited or blocked outright.
+        # Set SSO_PROXY_URL to a residential proxy to route all SSO + OAuth
+        # traffic through a clean IP.  The proxy is only used for the setup
+        # flow; ongoing MCP data requests are unaffected.
+        # Format: http://user:pass@host:port  or  socks5://user:pass@host:port
+        _sso_proxy = os.environ.get("SSO_PROXY_URL", "").strip()
+        if _sso_proxy:
+            isolated_client.configure(proxies={"https": _sso_proxy, "http": _sso_proxy})
+            print(f"[setup] SSO proxy active: {_sso_proxy.split('@')[-1]}")  # log host only
+        else:
+            print("[setup] No SSO_PROXY_URL set — using direct connection (may hit Cloudflare blocks)")
+
         # sso.login(return_on_mfa=True) returns immediately in both cases:
         #   - No MFA:  (OAuth1Token, OAuth2Token)
         #   - MFA req: ("needs_mfa", {"signin_params": ..., "client": ...})
