@@ -835,6 +835,67 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
 # API: Disconnect (revoke access token)
 # ---------------------------------------------------------------------------
 
+async def api_setup_import_token(request: Request) -> JSONResponse:
+    """
+    Register a Garmin token obtained externally (e.g. via local_setup.py).
+
+    Accepts a garth ``client.dumps()`` base64 string, validates it by calling
+    the Garmin social-profile endpoint, then stores the token and returns the
+    user's MCP URL.
+
+    Request body: {"email": str, "token": str}
+
+    Responses:
+      200 {"mcp_url": str}   — success
+      400 {"error": str}     — invalid/expired token or bad request
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    email = (body.get("email") or "").strip()
+    token = (body.get("token") or "").strip()
+
+    if not email or not token:
+        return JSONResponse({"error": "email and token are required"}, status_code=400)
+
+    loop = asyncio.get_event_loop()
+
+    def _validate_token(token_str: str):
+        """Load token into an isolated garth client and call social profile."""
+        isolated_client = GarthClient()
+        isolated_client.loads(token_str)
+        return isolated_client.connectapi("/userprofile-service/socialProfile")
+
+    try:
+        profile = await loop.run_in_executor(None, _validate_token, token)
+    except Exception as e:
+        print(f"[import-token] token validation error: {type(e).__name__}: {e}")
+        return JSONResponse(
+            {"error": f"Token validation failed: {e}"},
+            status_code=400,
+        )
+
+    display_name = (
+        profile.get("displayName")
+        or profile.get("userName")
+        if isinstance(profile, dict)
+        else None
+    )
+
+    try:
+        mcp_url = await _save_user_and_get_url(request, token, display_name, email)
+    except Exception as e:
+        print(f"[import-token] save_user error: {type(e).__name__}: {e}")
+        return JSONResponse(
+            {"error": f"Token valid but failed to save account: {e}"},
+            status_code=500,
+        )
+
+    return JSONResponse({"mcp_url": mcp_url})
+
+
 async def api_disconnect(request: Request) -> JSONResponse:
     """
     Revoke all access tokens for a given Garmin email address.
@@ -928,5 +989,6 @@ setup_routes = [
     Route("/debug/mcp", debug_mcp, methods=["GET"]),
     Route("/api/setup/start", api_setup_start, methods=["POST"]),
     Route("/api/setup/mfa", api_setup_mfa, methods=["POST"]),
+    Route("/api/setup/import-token", api_setup_import_token, methods=["POST"]),
     Route("/api/disconnect", api_disconnect, methods=["POST"]),
 ]
