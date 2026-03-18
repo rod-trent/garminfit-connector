@@ -43,6 +43,25 @@ def main():
         print("ERROR: garth is not installed.")
         print("Run:  pip install 'garth>=0.7.9'")
         sys.exit(1)
+
+    # Patch garth 0.7.9: fix hardcoded "email" mfaMethod (garth PR #215)
+    def _patched_handle_mfa(client, login_params, prompt_mfa):
+        import inspect as _i
+        mfa_code = prompt_mfa() if not _i.iscoroutinefunction(prompt_mfa) else None
+        mfa_method = "email"
+        try:
+            detected = client.last_resp.json().get("customerMfaInfo", {}).get("mfaLastMethodUsed")
+            if detected:
+                mfa_method = detected
+        except Exception:
+            pass
+        dbg(f"mfaMethod={mfa_method!r}")
+        client.post("sso", "/mobile/api/mfa/verifyCode", params=login_params,
+                    json={"mfaMethod": mfa_method, "mfaVerificationCode": mfa_code,
+                          "rememberMyBrowser": False, "reconsentList": [], "mfaSetup": False})
+        resp_json = garth_sso._parse_sso_response(client.last_resp.json(), garth_sso.SSO_SUCCESSFUL)
+        return resp_json["serviceTicketId"]
+    garth_sso.handle_mfa = _patched_handle_mfa
     try:
         import requests as _req
     except ImportError:

@@ -52,6 +52,58 @@ from garth import sso as garth_sso
 from garth.auth_tokens import OAuth1Token as _OAuth1Token
 from garth.exc import GarthException, GarthHTTPError
 from garth.http import Client as GarthClient
+
+# ---------------------------------------------------------------------------
+# Monkey-patch garth 0.7.9: fix hardcoded "email" mfaMethod (garth PR #215)
+# ---------------------------------------------------------------------------
+# garth 0.7.9 sends {"mfaMethod": "email"} unconditionally in handle_mfa().
+# Accounts using TOTP (authenticator app) or SMS receive MFA_CODE_INVALID
+# because the method doesn't match.  The login response contains the correct
+# method in customerMfaInfo.mfaLastMethodUsed — we read it from there.
+# ---------------------------------------------------------------------------
+
+def _patched_handle_mfa(client, login_params, prompt_mfa):
+    import inspect as _inspect
+    import asyncio as _asyncio
+
+    if _inspect.iscoroutinefunction(prompt_mfa):
+        mfa_code = _asyncio.run(prompt_mfa())
+    else:
+        mfa_code = prompt_mfa()
+
+    # client.last_resp is still the /mobile/api/login response here.
+    # Read the actual MFA method rather than hardcoding "email".
+    mfa_method = "email"  # safe fallback
+    try:
+        login_data = client.last_resp.json()
+        detected = (
+            login_data.get("customerMfaInfo", {}).get("mfaLastMethodUsed")
+        )
+        if detected:
+            mfa_method = detected
+    except Exception:
+        pass
+    print(f"[MFA-patch] mfaMethod={mfa_method!r}")
+
+    client.post(
+        "sso",
+        "/mobile/api/mfa/verifyCode",
+        params=login_params,
+        json={
+            "mfaMethod": mfa_method,
+            "mfaVerificationCode": mfa_code,
+            "rememberMyBrowser": False,
+            "reconsentList": [],
+            "mfaSetup": False,
+        },
+    )
+    resp_json = garth_sso._parse_sso_response(
+        client.last_resp.json(), garth_sso.SSO_SUCCESSFUL
+    )
+    return resp_json["serviceTicketId"]
+
+
+garth_sso.handle_mfa = _patched_handle_mfa
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
 from starlette.requests import Request
