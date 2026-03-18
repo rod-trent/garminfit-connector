@@ -120,6 +120,25 @@
     }
     .footer-links a { color: #7080B8; text-decoration: none; }
     .footer-links a:hover { color: #A0B0D8; text-decoration: underline; }
+    .notice-banner {
+      background: #1A1510;
+      border: 1px solid #4A3A1A;
+      border-left: 3px solid #C89A38;
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+      font-size: 0.85rem;
+      color: #B89050;
+      margin-bottom: 1.5rem;
+      line-height: 1.55;
+    }
+    .notice-banner strong { color: #E8B84B; }
+    .notice-banner .notice-title {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: #E8B84B;
+      margin-bottom: 0.3rem;
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -127,6 +146,11 @@
     <div class="logo"><img src="/static/icon.ico" alt="Garmin Chat Connector" /></div>
     <h1>Garmin Chat Connector</h1>
     <p class="subtitle">Enter your Garmin Connect credentials to get a personal MCP URL for Claude, ChatGPT, and other AI chat tools.</p>
+
+    <div class="notice-banner">
+      <strong class="notice-title">⚠️ Temporary Service Notice</strong>
+      Garmin is actively migrating its authentication system from OAuth 1.0 to OAuth 2.0, and this transition has temporarily broken sign-in for some accounts — including those with <strong>two-factor authentication (MFA)</strong>. This app is affected. We are actively working on a solution and expect MFA users to be able to connect again soon. Thank you for your patience.
+    </div>
 
     <div class="security-note">
       🔒 <strong>Your credentials are never stored.</strong> We use them only to obtain OAuth tokens, which are encrypted and stored securely. You can disconnect at any time.
