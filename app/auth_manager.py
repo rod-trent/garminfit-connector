@@ -4,15 +4,14 @@ Authentication utilities:
   - In-memory MFA pending session store (5-minute TTL)
   - Access token generation for user MCP URLs
 
-MFA design (v2 — garth return_on_mfa)
---------------------------------------
-garth 0.6+ exposes sso.login(return_on_mfa=True) which returns immediately with
-a client_state dict when MFA is required, instead of blocking inside a callback.
-sso.resume_login(client_state, mfa_code) then completes the login in a second
-call.  This removes the need for a blocking thread bridge entirely, which was
-the root cause of the 401 at the OAuth preauthorized endpoint — the old bridge
-kept the SSO session open while the user typed, and the CAS service ticket
-could expire before the OAuth exchange had a chance to run.
+MFA design (v4 — garth 0.7.9 native resume_login)
+--------------------------------------------------
+garth 0.7.9 rewrites the SSO flow to use Garmin's mobile JSON API and carries
+load-balancer cookies into the OAuth1 preauthorized exchange natively.
+sso.login(return_on_mfa=True) returns immediately with a client_state dict
+({"login_params": ..., "client": ...}) when MFA is required.
+sso.resume_login(client_state, mfa_code) completes the login atomically with
+no gap between MFA submission and OAuth exchange.
 
 The PendingMFASession now stores just the garth client_state dict and the
 isolated garth.http.Client so resume_login can complete the flow.
@@ -82,7 +81,7 @@ class PendingMFASession:
     native return_on_mfa / resume_login API.
 
     client_state: the dict returned by sso.login(return_on_mfa=True) when
-        MFA is required.  Contains {"signin_params": ..., "client": ...}.
+        MFA is required.  Contains {"login_params": ..., "client": ...}.
         The embedded "client" key IS isolated_client — same object.
 
     isolated_client: the garth.http.Client instance used for this login.
@@ -122,6 +121,27 @@ def create_mfa_session(
         isolated_client=isolated_client,
     )
     return session_id
+
+
+def get_mfa_session(session_id: str) -> PendingMFASession | None:
+    """
+    Retrieve (but do not remove) a pending MFA session.
+    Returns None if the session doesn't exist or has expired.
+    Use remove_mfa_session() when the session is no longer needed.
+    """
+    _cleanup_expired()
+    session = _pending.get(session_id)
+    if session is None:
+        return None
+    if datetime.utcnow() > session.expires_at:
+        del _pending[session_id]
+        return None
+    return session
+
+
+def remove_mfa_session(session_id: str) -> None:
+    """Remove a pending MFA session (called after success or unrecoverable error)."""
+    _pending.pop(session_id, None)
 
 
 def pop_mfa_session(session_id: str) -> PendingMFASession | None:

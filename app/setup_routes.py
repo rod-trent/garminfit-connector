@@ -13,22 +13,22 @@ Endpoints:
 
 All API responses are JSON. HTML pages use Jinja2 templates.
 
-MFA design (v3 — cookie-carrying preauthorized exchange)
----------------------------------------------------------
-garth's GarminOAuth1Session copies the retry adapter and proxies from
-client.sess but NOT the cookies.  In a real browser, sso.garmin.com cookies
-are sent to connectapi.garmin.com automatically because both sit under the
-.garmin.com parent domain.  For MFA-enabled accounts Garmin's preauthorized
-endpoint validates the MFA session cookie; without it the exchange returns
-401.  Non-MFA accounts have no MFA cookie so the check is skipped → they
-work fine with garth's default behaviour.
+MFA design (v4 — native garth 0.7.9 resume_login)
+---------------------------------------------------
+garth 0.7.9 rewrites the SSO flow to use Garmin's mobile JSON API
+(/mobile/api/login, /mobile/api/mfa/verifyCode) and carries Cloudflare
+load-balancer cookies into the OAuth1 preauthorized exchange via a
+/portal/sso/embed step.  This resolves both the legacy-account 401 (fixed
+by switching to Android consumer-key constants) and the MFA cookie problem
+that previously required our manual _resume_login_with_cookies workaround.
 
-Fix (_resume_login_with_cookies below): after handle_mfa() updates
-client.last_resp with the Success page (and the MFA session cookie is now
-live in client.sess.cookies), we extract the CAS ticket and make the
-preauthorized request using an OAuth1Session that explicitly carries
-client.sess.cookies.  Everything else (OAUTH_CONSUMER signing, exchange
-for OAuth2) is unchanged.
+The flow is:
+  sso.login(email, password, return_on_mfa=True, client=isolated_client)
+    → ("needs_mfa", client_state)   # MFA path
+    → (OAuth1Token, OAuth2Token)    # no-MFA path
+
+  sso.resume_login(client_state, mfa_code)
+    → (OAuth1Token, OAuth2Token)    # submits code, exchanges token atomically
 
 Each login uses its own isolated garth.http.Client instance, so concurrent
 users never share global garth state.
@@ -37,14 +37,9 @@ users never share global garth state.
 import asyncio
 import math
 import os
-import re as _re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from urllib.parse import parse_qs
-
-import requests as _requests  # used only for OAUTH_CONSUMER pre-warm
-from requests_oauthlib import OAuth1Session as _OAuth1Session
 
 from garth import sso as garth_sso
 from garth.auth_tokens import OAuth1Token as _OAuth1Token
@@ -59,7 +54,8 @@ from app.auth_manager import (
     create_mfa_session,
     encrypt_token,
     generate_access_token,
-    pop_mfa_session,
+    get_mfa_session,
+    remove_mfa_session,
 )
 from app.database import SessionLocal, User
 
@@ -143,125 +139,6 @@ def _is_ip_blocked(exc: Exception) -> bool:
     msg = str(exc)
     return "401" in msg and "sso/signin" in msg
 
-
-def _resume_login_with_cookies(
-    client_state: dict,
-    mfa_code: str,
-) -> tuple:
-    """
-    Complete an MFA login, carrying SSO session cookies into the OAuth
-    preauthorized token exchange.
-
-    garth's built-in GarminOAuth1Session copies the retry adapter and
-    proxies from client.sess but intentionally omits cookies — which is
-    fine for non-MFA accounts.  For MFA accounts Garmin's preauthorized
-    endpoint on connectapi.garmin.com validates the MFA session cookie that
-    was set by the verifyMFA call on sso.garmin.com.  Because both hosts
-    share the .garmin.com parent domain a real browser sends those cookies
-    automatically; garth does not.  Result: 401 for every MFA account.
-
-    This function replicates garth's resume_login() step-by-step but creates
-    its own OAuth1Session and explicitly copies client.sess.cookies before
-    making the preauthorized GET, matching what a browser would send.
-    """
-    client = client_state["client"]
-    signin_params = client_state["signin_params"]
-
-    # ── Step 1: submit MFA code (identical to garth's handle_mfa) ──────────
-    garth_sso.handle_mfa(client, signin_params, lambda: mfa_code)
-    # client.last_resp is now the verifyMFA response.
-    # Log it fully so we can see exactly what Garmin sent back.
-    _lr = client.last_resp
-    print(
-        f"[MFA-preauth] verifyMFA response: "
-        f"status={_lr.status_code}  url={_lr.url}"
-    )
-    # Log the page title so we know if it's Success / MFA-retry / error
-    _title_m = _re.search(r"<title>(.+?)</title>", _lr.text, _re.IGNORECASE)
-    print(f"[MFA-preauth] verifyMFA page title: {_title_m.group(1)!r}" if _title_m else "[MFA-preauth] verifyMFA page title: <not found>")
-    # Log first 600 chars so we can see the ticket URL if it's there
-    print(f"[MFA-preauth] verifyMFA body (first 600): {_lr.text[:600]!r}")
-    # Also log cookie names now present in client.sess (no values — security)
-    _cookie_names = [c.name for c in client.sess.cookies]
-    print(f"[MFA-preauth] SSO session cookies after verifyMFA: {_cookie_names}")
-
-    # ── Step 2: extract CAS ticket from the Success page ───────────────────
-    m = _re.search(r'embed\?ticket=([^"]+)"', client.last_resp.text)
-    if not m:
-        # Also try single-quote variant in case Garmin changed their HTML
-        m = _re.search(r"embed\?ticket=([^']+)'", client.last_resp.text)
-    if not m:
-        raise GarthException("Couldn't find ticket in response")
-    ticket = m.group(1)
-    print(f"[MFA-preauth] ticket extracted: {ticket[:40]}...")
-
-    # ── Step 3: exchange ticket — carry SSO cookies into OAuth1Session ──────
-    # Ensure OAUTH_CONSUMER is populated (pre-warm should have done this).
-    if not garth_sso.OAUTH_CONSUMER:
-        _prewarm_oauth_consumer()
-
-    sess = _OAuth1Session(
-        garth_sso.OAUTH_CONSUMER["consumer_key"],
-        garth_sso.OAUTH_CONSUMER["consumer_secret"],
-    )
-    # Copy ALL cookies from the SSO session — this is the critical difference
-    # vs garth's GarminOAuth1Session which copies adapter/proxies but not cookies.
-    sess.cookies.update(client.sess.cookies)
-    sess.mount("https://", client.sess.adapters["https://"])
-    sess.proxies = client.sess.proxies
-    sess.verify = client.sess.verify
-
-    url = (
-        f"https://connectapi.{client.domain}/oauth-service/oauth/"
-        f"preauthorized?ticket={ticket}"
-        f"&login-url=https://sso.{client.domain}/sso/embed"
-        f"&accepts-mfa-tokens=true"
-    )
-    resp = sess.get(
-        url,
-        headers=garth_sso.USER_AGENT,
-        timeout=client.timeout,
-    )
-    print(
-        f"[MFA-preauth] preauthorized → HTTP {resp.status_code}  "
-        f"cookies_sent={len(sess.cookies)}"
-    )
-    print(f"[MFA-preauth] preauthorized body (first 400): {resp.text[:400]!r}")
-    resp.raise_for_status()
-
-    parsed = parse_qs(resp.text)
-    token = {k: v[0] for k, v in parsed.items()}
-    oauth1 = _OAuth1Token(domain=client.domain, **token)
-
-    # ── Step 4: exchange OAuth1 → OAuth2 (same as garth's exchange()) ───────
-    oauth2 = garth_sso.exchange(oauth1, client)
-
-    return oauth1, oauth2
-
-
-def _prewarm_oauth_consumer() -> None:
-    """
-    Blocking: fetch garth's OAuth consumer credentials from S3 if not cached.
-
-    GarminOAuth1Session.__init__ fetches these on first use — inside the
-    tight window after a CAS ticket is issued and before it's exchanged at
-    the preauthorized endpoint.  If the S3 round-trip takes 1–3 s and
-    Garmin's CAS ticket TTL is short, the ticket expires → 401.
-
-    We call this in a background executor thread as soon as we know MFA
-    is required, so the fetch is complete (and the result cached in the
-    garth_sso.OAUTH_CONSUMER module-level dict) well before the user
-    submits their code and resume_login() runs.
-    """
-    if garth_sso.OAUTH_CONSUMER:
-        return  # already cached from a previous login
-    try:
-        data = _requests.get(garth_sso.OAUTH_CONSUMER_URL, timeout=10).json()
-        garth_sso.OAUTH_CONSUMER.update(data)
-        print("[prewarm] OAUTH_CONSUMER cached successfully")
-    except Exception as exc:
-        # Non-fatal: resume_login will still try the fetch itself.
-        print(f"[prewarm] OAUTH_CONSUMER fetch failed (non-fatal): {exc}")
 
 
 def _extract_retry_after(exc: Exception, default: int = 1800) -> int:
@@ -524,25 +401,6 @@ async def api_setup_start(request: Request) -> JSONResponse:
                     status_code=429,
                 )
 
-            # 401 at connectapi preauthorized — Garmin backend disruption for
-            # legacy accounts (started ~March 16, 2026, tracked in garth #198/#199).
-            # This happens for non-MFA accounts whose entire login runs synchronously
-            # inside garth_sso.login() before returning to us.
-            if "401" in str(e) and "preauthorized" in str(e):
-                return JSONResponse(
-                    {
-                        "error": (
-                            "⚠️ Garmin is currently experiencing a service disruption that "
-                            "prevents new connections for some older accounts (started ~March 16, 2026). "
-                            "Your credentials are correct — this is a known issue on Garmin's side. "
-                            "Please try again in 24–48 hours. "
-                            "Status: github.com/matin/garth/issues"
-                        ),
-                        "garmin_disruption": True,
-                    },
-                    status_code=400,
-                )
-
             return JSONResponse(
                 {"error": f"Authentication failed: {e}"},
                 status_code=400,
@@ -554,23 +412,6 @@ async def api_setup_start(request: Request) -> JSONResponse:
     # --- Interpret result ---------------------------------------------------
 
     if result[0] == "needs_mfa":
-        # Kick off the OAUTH_CONSUMER pre-warm in the background NOW,
-        # while the user opens their authenticator app.
-        #
-        # Why: GarminOAuth1Session (used inside resume_login → _complete_login
-        # → get_oauth1_token) fetches OAuth consumer creds from S3 on its
-        # very first instantiation.  With return_on_mfa=True we never reach
-        # _complete_login during api_setup_start, so OAUTH_CONSUMER is always
-        # cold when resume_login runs.  That S3 fetch (1–3 s) happens inside
-        # the narrow window between the CAS ticket being issued (MFA submit)
-        # and it being exchanged (preauthorized call) — if the ticket TTL is
-        # short the ticket expires mid-flight → 401 at preauthorized.
-        #
-        # Pre-warming here guarantees the cache is hot before the user even
-        # finishes typing their 6-digit code.
-        if not garth_sso.OAUTH_CONSUMER:
-            loop.run_in_executor(_login_executor, _prewarm_oauth_consumer)
-
         # Store the garth client_state so resume_login() can complete it.
         client_state = result[1]
         session_id = create_mfa_session(
@@ -641,7 +482,7 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
     if not session_id or not mfa_code:
         return JSONResponse({"error": "session_id and mfa_code are required"}, status_code=400)
 
-    session = pop_mfa_session(session_id)
+    session = get_mfa_session(session_id)
     if not session:
         return JSONResponse(
             {
@@ -655,29 +496,20 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
     isolated_client = session.isolated_client
     loop = asyncio.get_event_loop()
 
-    # Belt-and-suspenders: ensure OAUTH_CONSUMER is cached before we call
-    # resume_login.  Normally the background pre-warm started in
-    # api_setup_start has 5–30 s to complete while the user reads their
-    # authenticator app.  This await is a safety net for the rare case
-    # where the user is extremely fast or the server just restarted.
-    if not garth_sso.OAUTH_CONSUMER:
-        print("[MFA] OAUTH_CONSUMER not cached yet — pre-warming now (blocking)")
-        await loop.run_in_executor(_login_executor, _prewarm_oauth_consumer)
-
-    # resume_login() submits the MFA code to SSO, gets the CAS ticket, and
-    # exchanges it for OAuth tokens in one uninterrupted synchronous call.
-    # Because there is no gap between the MFA submission and the OAuth
-    # exchange the CAS ticket cannot expire in transit.
+    # resume_login() submits the MFA code to Garmin's mobile API, gets the
+    # CAS ticket, and exchanges it for OAuth tokens in one call.  garth 0.7.9
+    # carries cookies into the OAuth1 exchange natively, so no workaround needed.
     try:
         oauth1_token, oauth2_token = await asyncio.wait_for(
             loop.run_in_executor(
                 _login_executor,
-                lambda: _resume_login_with_cookies(client_state, mfa_code),
+                lambda: garth_sso.resume_login(client_state, mfa_code),
             ),
             timeout=60,
         )
     except asyncio.TimeoutError:
         print(f"[MFA] resume_login timed out for session {session_id}")
+        remove_mfa_session(session_id)
         return JSONResponse(
             {
                 "error": "MFA authentication timed out. Please start the setup process again.",
@@ -717,15 +549,14 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
 
         error_str = str(e)
 
-        # Wrong MFA code: handle_mfa POSTs the code, Garmin returns 200 with
-        # an error/retry page (not a ticket), _complete_login can't find
-        # "embed?ticket=" → GarthException.  No restart needed; same session
-        # is still valid and the user can try again with a fresh code.
-        if isinstance(e, GarthException) and "ticket" in error_str.lower():
+        # Wrong MFA code — garth 0.7.9 mobile JSON API surfaces this as
+        # "SSO error: MFA_CODE_INVALID: codeEntryInvalid".  No restart needed;
+        # the session is still alive and the user can try again with a fresh code.
+        if "MFA_CODE_INVALID" in error_str or "codeEntryInvalid" in error_str:
             return JSONResponse(
                 {
                     "error": (
-                        "Garmin did not accept the MFA code — no session ticket was returned. "
+                        "Invalid MFA code. "
                         "Please enter the latest 6-digit code from your authenticator app "
                         "and try again."
                     ),
@@ -734,9 +565,9 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
                 status_code=400,
             )
 
-        # 401 at the MFA submission endpoint itself (verifyMFA) — also a bad code,
-        # but returned as a non-2xx HTTP status rather than an HTML error page.
-        if "401" in error_str and "verifyMFA" in error_str:
+        # 401 at the MFA submission endpoint itself (verifyCode) — also a bad code,
+        # but returned as a non-2xx HTTP status rather than a JSON error body.
+        if "401" in error_str and "verifyCode" in error_str:
             return JSONResponse(
                 {
                     "error": (
@@ -748,33 +579,9 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
                 status_code=400,
             )
 
-        # 401 at the OAuth preauthorized endpoint.
-        # As of ~March 16, 2026 Garmin rolled out a backend change that causes
-        # the preauthorized ticket exchange to return 401 for some legacy
-        # (older) Garmin accounts — regardless of MFA status, library version,
-        # IP address, or any client-side change.  New accounts (created ~Oct
-        # 2025 or later) are unaffected.  This is confirmed by multiple
-        # independent reporters and is tracked in garth issue #198 and #199.
-        # There is nothing the user or this server can do to work around it
-        # until Garmin completes their backend migration.
-        if "401" in error_str and "preauthorized" in error_str:
-            return JSONResponse(
-                {
-                    "error": (
-                        "⚠️ Garmin is currently experiencing a service disruption that "
-                        "prevents new connections for some older accounts (started ~March 16, 2026). "
-                        "Your credentials are correct — this is a known issue on Garmin's side "
-                        "that is not related to your MFA code or this app. "
-                        "Please try again in 24–48 hours."
-                    ),
-                    "restart_required": True,
-                    "garmin_disruption": True,
-                },
-                status_code=400,
-            )
-
         # Catch-all 401 from any other endpoint.
         if "401" in error_str:
+            remove_mfa_session(session_id)
             return JSONResponse(
                 {
                     "error": "Authentication rejected by Garmin. Please start the setup process again.",
@@ -784,14 +591,14 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
             )
 
         # 429 anywhere during resume_login — Cloudflare is blocking this
-        # server's IP from the Garmin SSO endpoint (verifyMFA or preauthorized).
+        # server's IP from the Garmin SSO endpoint (verifyCode or preauthorized).
         # Set the server-wide block so subsequent requests are rejected at the
         # gate rather than burning more of the rate-limit budget.
         if "429" in error_str:
             retry_after = _extract_retry_after(e)
             # Identify which endpoint was blocked for a more precise reason string.
-            if "verifyMFA" in error_str:
-                block_reason = "429 at verifyMFA — Cloudflare block on MFA endpoint"
+            if "verifyCode" in error_str:
+                block_reason = "429 at verifyCode — Cloudflare block on MFA endpoint"
                 user_detail = (
                     "Cloudflare (Garmin's CDN) is blocking MFA authentication "
                     "requests from this server's IP address."
@@ -803,6 +610,7 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
                 )
             _set_garmin_block(retry_after, block_reason)
             wait_mins = max(1, (retry_after + 59) // 60)
+            remove_mfa_session(session_id)
             return JSONResponse(
                 {
                     "error": (
@@ -818,6 +626,7 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
             )
 
         # All other failures — session state is unknown, restart required.
+        remove_mfa_session(session_id)
         return JSONResponse(
             {
                 "error": f"MFA authentication failed: {e}. Please start the setup process again.",
@@ -825,6 +634,9 @@ async def api_setup_mfa(request: Request) -> JSONResponse:
             },
             status_code=400,
         )
+
+    # Success — remove the session and proceed.
+    remove_mfa_session(session_id)
 
     # Attach tokens to isolated_client so we can call dumps()
     isolated_client.configure(
