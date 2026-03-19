@@ -13,9 +13,9 @@ Endpoints:
 
 All API responses are JSON. HTML pages use Jinja2 templates.
 
-MFA design (v5 — thread-bridge with garth 0.7.9 mobile JSON API)
------------------------------------------------------------------
-garth 0.7.9 uses Garmin's mobile JSON API (/mobile/api/login,
+MFA design (v5 — thread-bridge with garth 0.7.10 mobile JSON API)
+------------------------------------------------------------------
+garth 0.7.10 uses Garmin's mobile JSON API (/mobile/api/login,
 /mobile/api/mfa/verifyCode).  Garmin's login session token (stored in
 login_params) has a very short TTL; using return_on_mfa=True + resume_login
 across two separate HTTP requests causes the session to expire between calls,
@@ -54,64 +54,12 @@ from garth.exc import GarthException, GarthHTTPError
 from garth.http import Client as GarthClient
 
 # ---------------------------------------------------------------------------
-# Monkey-patch garth 0.7.9: fix hardcoded "email" mfaMethod (garth PR #215)
-# ---------------------------------------------------------------------------
-# garth 0.7.9 sends {"mfaMethod": "email"} unconditionally in handle_mfa().
-# Accounts using TOTP (authenticator app) or SMS receive MFA_CODE_INVALID
-# because the method doesn't match.  The login response contains the correct
-# method in customerMfaInfo.mfaLastMethodUsed — we read it from there.
-# ---------------------------------------------------------------------------
-
-def _patched_handle_mfa(client, login_params, prompt_mfa):
-    import inspect as _inspect
-    import asyncio as _asyncio
-
-    if _inspect.iscoroutinefunction(prompt_mfa):
-        mfa_code = _asyncio.run(prompt_mfa())
-    else:
-        mfa_code = prompt_mfa()
-
-    # client.last_resp is still the /mobile/api/login response here.
-    # Read the actual MFA method rather than hardcoding "email".
-    mfa_method = "email"  # safe fallback
-    try:
-        login_data = client.last_resp.json()
-        detected = (
-            login_data.get("customerMfaInfo", {}).get("mfaLastMethodUsed")
-        )
-        if detected:
-            mfa_method = detected
-    except Exception:
-        pass
-    print(f"[MFA-patch] mfaMethod={mfa_method!r}")
-
-    client.post(
-        "sso",
-        "/mobile/api/mfa/verifyCode",
-        params=login_params,
-        json={
-            "mfaMethod": mfa_method,
-            "mfaVerificationCode": mfa_code,
-            "rememberMyBrowser": False,
-            "reconsentList": [],
-            "mfaSetup": False,
-        },
-    )
-    resp_json = garth_sso._parse_sso_response(
-        client.last_resp.json(), garth_sso.SSO_SUCCESSFUL
-    )
-    return resp_json["serviceTicketId"]
-
-
-garth_sso.handle_mfa = _patched_handle_mfa
-
-# ---------------------------------------------------------------------------
-# Monkey-patch garth 0.7.9: retry preauthorized on 401/429 (garth PR #214)
+# Monkey-patch garth 0.7.10: retry preauthorized on 401/429 (garth PR #214)
 # ---------------------------------------------------------------------------
 # get_oauth1_token() calls the OAuth preauthorized endpoint once and raises
 # immediately on any non-2xx.  Garmin's endpoint returns intermittent 401/429
-# responses even with a valid service ticket.  PR #214 (garth 0.7.10) adds
-# retry-with-backoff; we apply the same fix here until 0.7.10 is released.
+# responses even with a valid service ticket.  PR #214 is not yet in 0.7.10;
+# this patch applies the same retry-with-backoff fix until it ships.
 # ---------------------------------------------------------------------------
 
 _orig_get_oauth1_token = garth_sso.get_oauth1_token

@@ -148,8 +148,8 @@
     <p class="subtitle">Enter your Garmin Connect credentials to get a personal MCP URL for Claude, ChatGPT, and other AI chat tools.</p>
 
     <div class="notice-banner">
-      <strong class="notice-title">⚠️ Temporary Service Notice</strong>
-      Garmin is actively migrating its authentication system from OAuth 1.0 to OAuth 2.0, and this transition has temporarily broken sign-in for some accounts — including those with <strong>two-factor authentication (MFA)</strong>. This app is affected. We are actively working on a solution and expect MFA users to be able to connect again soon. Thank you for your patience.
+      <strong class="notice-title">⚠️ Connections Temporarily Disabled</strong>
+      New Garmin account connections are temporarily unavailable while we resolve a rate-limiting issue with Garmin's authentication servers. Existing connections continue to work normally. We expect to re-enable sign-in shortly — thank you for your patience.
     </div>
 
     <div class="security-note">
@@ -165,13 +165,13 @@
       </div>
       <div>
         <label for="email">Garmin Connect Email</label>
-        <input type="email" id="email" placeholder="you@example.com" autocomplete="username" />
+        <input type="email" id="email" placeholder="you@example.com" autocomplete="username" disabled />
       </div>
       <div>
         <label for="password">Garmin Connect Password</label>
-        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" />
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password" disabled />
       </div>
-      <button class="btn" id="btn-connect" onclick="startSetup()">Connect Garmin Account</button>
+      <button class="btn" id="btn-connect" onclick="startSetup()" disabled>Connections Temporarily Unavailable</button>
     </div>
 
     <!-- Step 2: MFA form -->

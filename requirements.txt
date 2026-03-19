@@ -1,5 +1,5 @@
 garminconnect @ git+https://github.com/cyberjunky/python-garminconnect.git@master
-garth>=0.7.9
+garth>=0.7.10
 mcp[cli]>=1.0.0
 starlette>=0.36.0
 uvicorn[standard]>=0.27.0
