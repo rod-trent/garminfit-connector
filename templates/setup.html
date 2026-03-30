@@ -16,6 +16,8 @@
       justify-content: center;
       padding: 1.5rem;
     }
+
+    /* ── Landing card (email entry) ── */
     .card {
       background: #16162A;
       border: 1px solid rgba(255,255,255,0.06);
@@ -41,46 +43,42 @@
       line-height: 1.55;
     }
     .info-banner strong { color: #5CC98A; }
-    .steps-title {
-      font-size: 0.95rem;
-      font-weight: 700;
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 600;
       color: #C0C4D8;
-      margin-bottom: 0.85rem;
+      margin-bottom: 0.4rem;
     }
-    ol {
-      padding-left: 1.25rem;
-      color: #8A90AA;
-      font-size: 0.9rem;
-      line-height: 1.7;
-    }
-    ol li { margin-bottom: 0.5rem; }
-    ol li strong { color: #C0C4D8; }
-    code {
-      background: #0D0D1A;
-      border: 1px solid #2A2A46;
-      border-radius: 4px;
-      padding: 0.1rem 0.4rem;
-      font-size: 0.85rem;
-      color: #A8B4E0;
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    }
-    .code-block {
+    input[type="email"] {
+      width: 100%;
       background: #0D0D1A;
       border: 1px solid #2A2A46;
       border-radius: 8px;
-      padding: 0.85rem 1rem;
-      font-size: 0.83rem;
-      color: #A8B4E0;
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-      margin: 0.5rem 0 0.75rem;
-      white-space: pre-wrap;
-      word-break: break-all;
+      color: #E8EAF2;
+      font-size: 0.95rem;
+      padding: 0.6rem 0.85rem;
+      outline: none;
+      margin-bottom: 1rem;
+      transition: border-color 0.15s;
     }
-    .divider {
+    input[type="email"]:focus { border-color: #5CC98A; }
+    input[type="email"]::placeholder { color: #5A5F78; }
+    input[type="email"]:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn {
+      width: 100%;
+      background: #1D7A4A;
+      color: #E8F8EE;
       border: none;
-      border-top: 1px solid rgba(255,255,255,0.06);
-      margin: 1.5rem 0;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 0.7rem 1rem;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
     }
+    .btn:hover:not(:disabled) { background: #22934F; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .footer-links {
       margin-top: 1.5rem;
       text-align: center;
@@ -89,65 +87,412 @@
     }
     .footer-links a { color: #7080B8; text-decoration: none; }
     .footer-links a:hover { color: #A0B0D8; text-decoration: underline; }
-    .why-box {
-      background: #1A1510;
-      border: 1px solid #3A3218;
+
+    /* ── Browser viewer ── */
+    #browser-view {
+      display: none;
+      flex-direction: column;
+      width: 100%;
+      max-width: 1220px;
+    }
+    .browser-chrome {
+      background: #16162A;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-bottom: none;
+      border-radius: 10px 10px 0 0;
+      padding: 0.55rem 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .browser-chrome .dots { display: flex; gap: 6px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot-red   { background: #FF5F57; }
+    .dot-yel   { background: #FEBC2E; }
+    .dot-grn   { background: #28C840; }
+    #url-bar {
+      flex: 1;
+      background: #0D0D1A;
+      border: 1px solid #2A2A46;
+      border-radius: 6px;
+      color: #8A90AA;
+      font-size: 0.78rem;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      padding: 0.3rem 0.65rem;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      pointer-events: none;
+      user-select: none;
+    }
+    .canvas-wrap {
+      position: relative;
+      background: #000;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 0 0 10px 10px;
+      overflow: hidden;
+      cursor: none;
+    }
+    #garmin-canvas {
+      display: block;
+      width: 100%;
+      /* height set dynamically via JS to preserve 1200:720 aspect ratio */
+    }
+    #browser-status {
+      margin-top: 0.65rem;
+      font-size: 0.82rem;
+      color: #8A90AA;
+      text-align: center;
+      min-height: 1.2em;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #2A2A46;
+      border-top-color: #5CC98A;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 0.4rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Success overlay ── */
+    #success-banner {
+      display: none;
+      background: #111E1A;
+      border: 1px solid #1E3830;
+      border-left: 3px solid #5CC98A;
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+      font-size: 0.9rem;
+      color: #7AD4A0;
+      margin-top: 0.75rem;
+      line-height: 1.6;
+    }
+    #success-banner strong { color: #5CC98A; }
+    .mcp-url-box {
+      background: #0D0D1A;
+      border: 1px solid #2A2A46;
+      border-radius: 6px;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.8rem;
+      color: #A8B4E0;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      word-break: break-all;
+      margin: 0.6rem 0 0.4rem;
+    }
+    .copy-btn {
+      background: #1D3A5A;
+      border: 1px solid #2A4A6A;
+      border-radius: 6px;
+      color: #80B0E0;
+      font-size: 0.78rem;
+      padding: 0.3rem 0.75rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .copy-btn:hover { background: #234470; }
+
+    /* ── Error banner ── */
+    #error-banner {
+      display: none;
+      background: #1E1010;
+      border: 1px solid #3A1818;
+      border-left: 3px solid #CC4444;
       border-radius: 8px;
       padding: 0.85rem 1rem;
-      font-size: 0.83rem;
-      color: #8A7A4A;
-      margin-top: 1.25rem;
+      font-size: 0.875rem;
+      color: #E08080;
+      margin-top: 0.75rem;
       line-height: 1.5;
     }
-    .why-box strong { color: #C89A38; }
   </style>
 </head>
 <body>
-  <div class="card">
+
+  <!-- ── Landing card ── -->
+  <div class="card" id="landing-card">
     <div class="logo"><img src="/static/icon.ico" alt="Garmin Chat Connector" /></div>
     <h1>Garmin Chat Connector</h1>
     <p class="subtitle">Connect your Garmin account to Claude, ChatGPT, and other AI chat tools.</p>
 
     <div class="info-banner">
-      <strong>Browser-based authentication required.</strong>
-      Run the one-time setup script on your computer to connect your Garmin account.
-      The script opens a real Chrome window so Garmin's security checks pass correctly.
+      <strong>No software to install.</strong>
+      Sign in to Garmin directly in your browser — a secure interactive window opens below.
+      Your password is never sent to this server.
     </div>
 
-    <p class="steps-title">How to connect your account:</p>
-    <ol>
-      <li>
-        <strong>Install the setup script dependencies</strong> (Python 3.10+ required):
-        <div class="code-block">pip install playwright httpx
-playwright install chrome</div>
-      </li>
-      <li>
-        <strong>Get the setup script</strong> — find <code>scripts/playwright_setup.py</code>
-        in the project repository and copy it to your machine.
-      </li>
-      <li>
-        <strong>Run the script</strong> — it will open a Chrome window for login:
-        <div class="code-block">python playwright_setup.py</div>
-        Enter your Garmin email, password, and this server's URL when prompted.
-        Complete any MFA challenge in the browser window.
-      </li>
-      <li>
-        <strong>Copy your MCP URL</strong> from the script output and add it to your
-        Claude Desktop config or any MCP-compatible client.
-      </li>
-    </ol>
+    <label for="email-input">Your Garmin email (optional — speeds up login)</label>
+    <input type="email" id="email-input" placeholder="you@example.com" autocomplete="email" />
 
-    <div class="why-box">
-      <strong>Why a local script?</strong>
-      Garmin's login page uses Cloudflare Turnstile, which requires a real browser on your
-      machine to pass verification.  The script authenticates once, saves a session that
-      lasts ~1 year, and uploads only the encrypted session token (never your password) to
-      this server.  Re-run it when your session expires.
-    </div>
+    <button class="btn" id="connect-btn">Open Garmin Login</button>
+
+    <div id="error-banner"></div>
 
     <div class="footer-links">
       Already connected? <a href="/disconnect">Disconnect your account</a>
     </div>
   </div>
+
+  <!-- ── Browser viewer (shown after connect) ── -->
+  <div id="browser-view">
+    <div class="browser-chrome">
+      <div class="dots">
+        <div class="dot dot-red"></div>
+        <div class="dot dot-yel"></div>
+        <div class="dot dot-grn"></div>
+      </div>
+      <div id="url-bar">Connecting…</div>
+    </div>
+    <div class="canvas-wrap" id="canvas-wrap">
+      <canvas id="garmin-canvas" tabindex="0"></canvas>
+    </div>
+    <div id="browser-status"><span class="spinner"></span>Opening Garmin login…</div>
+    <div id="success-banner"></div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  const BROWSER_W = 1200, BROWSER_H = 720;
+
+  const landingCard  = document.getElementById("landing-card");
+  const browserView  = document.getElementById("browser-view");
+  const emailInput   = document.getElementById("email-input");
+  const connectBtn   = document.getElementById("connect-btn");
+  const errorBanner  = document.getElementById("error-banner");
+  const canvas       = document.getElementById("garmin-canvas");
+  const canvasWrap   = document.getElementById("canvas-wrap");
+  const urlBar       = document.getElementById("url-bar");
+  const statusEl     = document.getElementById("browser-status");
+  const successBanner = document.getElementById("success-banner");
+  const ctx          = canvas.getContext("2d");
+
+  let ws = null;
+  let sessionId = null;
+  let emailForSession = "";
+  let scaleX = 1, scaleY = 1;
+
+  // ── Resize canvas to preserve aspect ratio ──────────────────────────────
+  function resizeCanvas() {
+    const maxW = Math.min(window.innerWidth - 32, 1220);
+    const w = maxW;
+    const h = Math.round(w * BROWSER_H / BROWSER_W);
+    canvas.width  = BROWSER_W;
+    canvas.height = BROWSER_H;
+    canvas.style.width  = w + "px";
+    canvas.style.height = h + "px";
+    scaleX = BROWSER_W / w;
+    scaleY = BROWSER_H / h;
+  }
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+
+  // ── Show error on landing card ──────────────────────────────────────────
+  function showError(msg) {
+    errorBanner.style.display = "block";
+    errorBanner.textContent = msg;
+    connectBtn.disabled = false;
+    emailInput.disabled = false;
+  }
+
+  // ── Connect button ──────────────────────────────────────────────────────
+  connectBtn.addEventListener("click", function () {
+    errorBanner.style.display = "none";
+    connectBtn.disabled = true;
+    emailInput.disabled = true;
+    emailForSession = (emailInput.value || "").trim();
+    startWebSocket();
+  });
+
+  // ── WebSocket lifecycle ─────────────────────────────────────────────────
+  function startWebSocket() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(proto + "://" + location.host + "/api/setup/ws");
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = function () {
+      ws.send(JSON.stringify({ type: "start", email: emailForSession }));
+    };
+
+    ws.onmessage = function (evt) {
+      if (evt.data instanceof ArrayBuffer) {
+        // JPEG screenshot frame
+        renderFrame(evt.data);
+      } else {
+        try {
+          const msg = JSON.parse(evt.data);
+          handleServerMsg(msg);
+        } catch (e) { /* ignore */ }
+      }
+    };
+
+    ws.onerror = function () {
+      showError("WebSocket connection failed. Please refresh and try again.");
+    };
+
+    ws.onclose = function (evt) {
+      if (sessionId) return; // login_success already handled
+      if (!successBanner.style.display || successBanner.style.display === "none") {
+        showLandingWithError("Connection closed unexpectedly (code " + evt.code + "). Please try again.");
+      }
+    };
+  }
+
+  function showLandingWithError(msg) {
+    browserView.style.display = "none";
+    landingCard.style.display = "block";
+    connectBtn.disabled = false;
+    emailInput.disabled = false;
+    showError(msg);
+  }
+
+  // ── Handle server text messages ─────────────────────────────────────────
+  function handleServerMsg(msg) {
+    switch (msg.type) {
+      case "ready":
+        // Switch view from landing card to browser canvas
+        landingCard.style.display = "none";
+        browserView.style.display = "flex";
+        browserView.style.flexDirection = "column";
+        statusEl.innerHTML = '<span class="spinner"></span>Loading Garmin login page…';
+        canvas.focus();
+        break;
+
+      case "url":
+        urlBar.textContent = msg.url || "…";
+        if (msg.url && msg.url.includes("connect.garmin.com")) {
+          statusEl.textContent = "Logged in — saving your session…";
+        } else if (msg.url && msg.url.includes("sso.garmin.com")) {
+          statusEl.textContent = "Sign in to your Garmin account in the window above.";
+        }
+        break;
+
+      case "login_success":
+        sessionId = msg.session_id;
+        statusEl.innerHTML = '<span class="spinner"></span>Login detected — saving your MCP connection…';
+        completeSetup(msg.session_id);
+        break;
+
+      case "error":
+        showLandingWithError(msg.message || "An error occurred. Please try again.");
+        break;
+    }
+  }
+
+  // ── Render JPEG frame ───────────────────────────────────────────────────
+  function renderFrame(buffer) {
+    const blob = new Blob([buffer], { type: "image/jpeg" });
+    const url  = URL.createObjectURL(blob);
+    const img  = new Image();
+    img.onload = function () {
+      ctx.drawImage(img, 0, 0, BROWSER_W, BROWSER_H);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  // ── Mouse events ────────────────────────────────────────────────────────
+  function canvasCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top)  * scaleY,
+    };
+  }
+
+  canvas.addEventListener("click", function (e) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const { x, y } = canvasCoords(e);
+    ws.send(JSON.stringify({ type: "click", x, y }));
+    canvas.focus();
+  });
+
+  canvas.addEventListener("mousemove", function (e) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const { x, y } = canvasCoords(e);
+    ws.send(JSON.stringify({ type: "mousemove", x, y }));
+  });
+
+  canvas.addEventListener("wheel", function (e) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    e.preventDefault();
+    const { x, y } = canvasCoords(e);
+    ws.send(JSON.stringify({ type: "scroll", x, y, deltaY: e.deltaY }));
+  }, { passive: false });
+
+  // ── Keyboard events ─────────────────────────────────────────────────────
+  const NAMED_KEYS = new Set([
+    "Enter", "Backspace", "Tab", "Escape", "Delete",
+    "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown",
+    "Home", "End", "PageUp", "PageDown", "Space",
+    "F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12",
+  ]);
+
+  canvas.addEventListener("keydown", function (e) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    // Suppress browser shortcuts that would navigate away
+    if (e.key === "F5" || (e.ctrlKey && ["r","w","t","l"].includes(e.key.toLowerCase()))) {
+      e.preventDefault();
+    }
+    let key = e.key;
+    if (NAMED_KEYS.has(key) || key.length > 1) {
+      // Named key
+      ws.send(JSON.stringify({ type: "key", key }));
+      e.preventDefault();
+    } else if (key.length === 1 && !e.ctrlKey && !e.metaKey) {
+      // Printable character — type it
+      ws.send(JSON.stringify({ type: "key", key }));
+      e.preventDefault();
+    }
+  });
+
+  // ── POST /api/setup/complete ────────────────────────────────────────────
+  async function completeSetup(sid) {
+    try {
+      const res = await fetch("/api/setup/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sid, email: emailForSession }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        statusEl.textContent = "Error: " + (data.error || res.statusText);
+        return;
+      }
+      showSuccess(data.mcp_url);
+    } catch (err) {
+      statusEl.textContent = "Network error — please refresh and try again.";
+    }
+  }
+
+  // ── Show success banner with MCP URL ────────────────────────────────────
+  function showSuccess(mcpUrl) {
+    statusEl.textContent = "Connected!";
+    successBanner.style.display = "block";
+    successBanner.innerHTML =
+      "<strong>Your Garmin account is connected.</strong> " +
+      "Copy the MCP URL below and paste it into your AI client (Claude Desktop, ChatGPT, etc.)." +
+      '<div class="mcp-url-box" id="mcp-url-text">' + escHtml(mcpUrl) + "</div>" +
+      '<button class="copy-btn" id="copy-btn">Copy URL</button>';
+
+    document.getElementById("copy-btn").addEventListener("click", function () {
+      navigator.clipboard.writeText(mcpUrl).then(function () {
+        document.getElementById("copy-btn").textContent = "Copied!";
+        setTimeout(function () {
+          document.getElementById("copy-btn").textContent = "Copy URL";
+        }, 2000);
+      });
+    });
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+})();
+</script>
 </body>
 </html>
