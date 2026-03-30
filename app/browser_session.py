@@ -103,6 +103,12 @@ async def create_session(prefill_email: str = "") -> Optional[str]:
         display = os.environ.get("DISPLAY", "")
         headless = not bool(display)
 
+        # RESIDENTIAL_PROXY_URL routes the browser through a residential IP so
+        # Cloudflare/Garmin don't block the login as a datacenter request.
+        # Format: "http://user:pass@host:port"  or  "socks5://user:pass@host:port"
+        # Leave unset for self-hosted installs on residential/corporate networks.
+        proxy_url = os.environ.get("RESIDENTIAL_PROXY_URL", "").strip() or None
+
         playwright = await async_playwright().start()
         launch_args = [
             "--disable-blink-features=AutomationControlled",
@@ -111,13 +117,14 @@ async def create_session(prefill_email: str = "") -> Optional[str]:
             "--disable-dev-shm-usage",
         ]
         if headless:
-            # Only needed in true headless mode; headed mode has a real GPU pipe
             launch_args.append("--disable-gpu")
 
-        browser = await playwright.chromium.launch(
-            headless=headless,
-            args=launch_args,
-        )
+        launch_kwargs: dict = {"headless": headless, "args": launch_args}
+        if proxy_url:
+            launch_kwargs["proxy"] = {"server": proxy_url}
+            log.info("Browser session %s: using residential proxy", session_id)
+
+        browser = await playwright.chromium.launch(**launch_kwargs)
         context = await browser.new_context(
             viewport={"width": 1200, "height": 720},
             locale="en-US",
@@ -184,8 +191,6 @@ async def create_session(prefill_email: str = "") -> Optional[str]:
             delete navigator.__proto__.webdriver;
         """)
 
-        log.info("Browser session %s: headless=%s display=%r", session_id, headless, display)
-
         session = BrowserSession(
             session_id=session_id,
             _playwright=playwright,
@@ -206,7 +211,8 @@ async def create_session(prefill_email: str = "") -> Optional[str]:
             except Exception:
                 pass  # Not critical — user can type it themselves
 
-        log.info("Browser session %s created", session_id)
+        log.info("Browser session %s created (headless=%s, proxy=%s)",
+                 session_id, headless, bool(proxy_url))
         return session_id
 
     except Exception as exc:
