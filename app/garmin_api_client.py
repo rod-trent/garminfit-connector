@@ -11,6 +11,7 @@ Token JSON format:
 """
 
 import json
+import os
 import re
 from datetime import date, timedelta
 from typing import Optional
@@ -35,6 +36,14 @@ class GarminApiClient:
         self._session.cookies.update(cookies)
         self._csrf: Optional[str] = None
         self.display_name = display_name
+
+        # Route API calls through a residential proxy when set.
+        # Garmin's Cloudflare blocks datacenter IPs (Railway, AWS, etc.) at the
+        # API level — the same proxy used for browser login is needed here too.
+        # Format: http://user:pass@host:port  or  socks5://user:pass@host:port
+        _proxy = os.environ.get("RESIDENTIAL_PROXY_URL", "").strip()
+        if _proxy:
+            self._session.proxies = {"https": _proxy, "http": _proxy}
 
     # ------------------------------------------------------------------
     # Factory / serialisation
