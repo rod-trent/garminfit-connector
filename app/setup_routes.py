@@ -346,20 +346,27 @@ async def api_setup_import_token(request: Request) -> JSONResponse:
 
     def _validate(token_str: str):
         client = GarminApiClient.from_token(token_str)
-        data = client._get("/userprofile-service/socialProfile")
-        display_name = (
-            data.get("displayName") or data.get("userName")
-            if isinstance(data, dict)
-            else None
-        )
-        if display_name:
-            client.display_name = display_name
-        return display_name, client.dumps()
+        # Best-effort: try to refresh display_name from the live API.
+        # If the call fails (CSRF issue, network, etc.) keep whatever
+        # display_name was embedded in the token by the local script.
+        try:
+            data = client._get("/userprofile-service/socialProfile")
+            display_name = (
+                data.get("displayName") or data.get("userName")
+                if isinstance(data, dict)
+                else None
+            )
+            if display_name:
+                client.display_name = display_name
+        except Exception as exc:
+            print(f"[import-token] live validation skipped ({exc!s:.120}); "
+                  "using display_name from token")
+        return client.display_name, client.dumps()
 
     try:
         display_name, updated_token = await loop.run_in_executor(None, _validate, token)
     except Exception as exc:
-        return JSONResponse({"error": f"Token validation failed: {exc}"}, status_code=400)
+        return JSONResponse({"error": f"Token import failed: {exc}"}, status_code=400)
 
     try:
         mcp_url = await _save_user_and_get_url(request, updated_token, display_name, email)

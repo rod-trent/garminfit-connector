@@ -242,7 +242,15 @@ def import_to_server(server_url: str, email: str, session_data: dict) -> str:
         json={"email": email, "token": token_json},
         timeout=30,
     )
-    resp.raise_for_status()
+
+    if not resp.is_success:
+        try:
+            err = resp.json().get("error", resp.text)
+        except Exception:
+            err = resp.text
+        print(f"ERROR: Server returned {resp.status_code}: {err}")
+        sys.exit(1)
+
     data = resp.json()
 
     if "mcp_url" not in data:
