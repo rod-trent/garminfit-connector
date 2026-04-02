@@ -86,11 +86,19 @@ class GarminApiClient:
         )
 
     def _headers(self) -> dict:
-        return {
-            "connect-csrf-token": self._get_csrf(),
+        headers = {
             "Accept": "application/json",
-            "NK": "NT",
+            "NK": "NT",  # Garmin Connect API bypass header; sufficient without CSRF
         }
+        # CSRF token is optional — the NK header covers most endpoints.
+        # If extraction fails (SPA doesn't embed it in initial HTML), skip it.
+        try:
+            csrf = self._get_csrf()
+            if csrf:
+                headers["connect-csrf-token"] = csrf
+        except Exception:
+            pass
+        return headers
 
     def _get(self, path: str, params: Optional[dict] = None) -> object:
         url = f"{GC_API}{path}"
