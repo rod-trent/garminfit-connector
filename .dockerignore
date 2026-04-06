@@ -1,0 +1,10 @@
+.git
+.claude
+__pycache__
+*.pyc
+*.pyo
+.env
+.env.*
+*.sqlite
+*.db
+scripts/
