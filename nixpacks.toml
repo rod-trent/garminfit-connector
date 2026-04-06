@@ -1,0 +1,5 @@
+[phases.setup]
+# chromium — open-source Chrome build, always in nixpkgs binary cache (no stale URL)
+# xorg.xvfb — virtual X display for headed-mode Chrome on headless Linux
+# glib — provides libglib-2.0.so.0 that SeleniumBase's uc_driver binary needs
+nixPkgs = ["chromium", "xorg.xvfb", "glib"]

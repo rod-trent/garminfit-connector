@@ -75,13 +75,15 @@ class UCLoginSession:
         # UC mode is unreliable with Chrome's --headless flag.
         use_xvfb = not bool(os.environ.get("DISPLAY", ""))
 
-        # Explicitly locate the Chrome binary so SeleniumBase doesn't fall
-        # back to a slow/failing auto-search inside the container.
+        # Explicitly locate the Chrome/Chromium binary so SeleniumBase doesn't
+        # fall back to a slow/failing auto-search inside the container.
+        # Railway nixpkgs installs chromium to the nix profile bin directory.
         _CHROME_CANDIDATES = [
-            "/usr/bin/google-chrome-stable",
-            "/usr/bin/google-chrome",
+            "/root/.nix-profile/bin/chromium",   # Railway nixpkgs
             "/usr/bin/chromium",
             "/usr/bin/chromium-browser",
+            "/usr/bin/google-chrome-stable",      # Dockerfile / apt install
+            "/usr/bin/google-chrome",
         ]
         binary = next((p for p in _CHROME_CANDIDATES if os.path.exists(p)), None)
         sb_kwargs = dict(uc=True, headless=False, xvfb=use_xvfb)
