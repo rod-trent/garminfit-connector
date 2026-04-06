@@ -1,13 +1,22 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+# Install Chrome from Google's direct download (always latest stable, no stale
+# nixpkgs pin), all required shared libs, Python deps, and a matching ChromeDriver.
+# apt-get is available in Railway's nixpkgs builder because Nix runs on a Debian base.
+buildCommand = """apt-get update -y && \
+  apt-get install -y wget gnupg xvfb \
+    libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 \
+    libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 \
+    libxrandr2 libgbm1 libasound2 libx11-6 libxext6 libxfixes3 && \
+  wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    -O /tmp/chrome.deb && \
+  apt-get install -y /tmp/chrome.deb && \
+  rm /tmp/chrome.deb && \
+  pip install -r requirements.txt && \
+  seleniumbase install chromedriver"""
 
 [deploy]
-# Start Xvfb on display :99 before the app so SeleniumBase UC has a real
-# X display to attach to. Chrome's built-in --headless mode fails Cloudflare
-# fingerprint checks; a virtual X display is required.
-# DISPLAY=:99 tells the Python process (and Chrome) which display to use.
-# SeleniumBase sees DISPLAY set and skips its own Xvfb startup.
+# Start Xvfb on :99 before the app. DISPLAY=:99 is exported so Chrome attaches
+# to the virtual display. SeleniumBase sees DISPLAY set and skips its own Xvfb.
 startCommand = "Xvfb :99 -screen 0 1280x800x24 -ac +extension GLX +render -noreset & sleep 1 && DISPLAY=:99 PYTHONUNBUFFERED=1 uvicorn app.main:app --host 0.0.0.0 --port $PORT --log-level warning"
 healthcheckPath = "/health"
 healthcheckTimeout = 60
