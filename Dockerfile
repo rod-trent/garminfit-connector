@@ -7,5 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Railway injects $PORT at runtime; shell form expands it correctly.
-CMD uvicorn app.main:app --host 0.0.0.0 --port $PORT
+# Railway injects $PORT at runtime.
+# Shell-form CMD runs via /bin/sh -c so $PORT is expanded correctly.
+EXPOSE 8080
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --log-level info
