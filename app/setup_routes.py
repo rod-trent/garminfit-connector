@@ -19,7 +19,10 @@ GET  /debug/mcp   → MCP session diagnostics
 import asyncio  # used by api_setup_import_token
 import logging
 import os
+import secrets
+import time
 from datetime import datetime
+from typing import Dict, Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select
@@ -32,6 +35,26 @@ from app.database import SessionLocal, User
 from app.garmin_api_client import GarminApiClient
 
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Temporary MFA session storage for the garmy login flow
+#
+# {session_id: {"auth_client": AuthClient, "client_state": dict,
+#               "email": str, "created_at": float}}
+# Entries are pruned after MFA_SESSION_TTL seconds.
+# ---------------------------------------------------------------------------
+_garmy_mfa_sessions: Dict[str, Dict[str, Any]] = {}
+MFA_SESSION_TTL = 300  # 5 minutes
+
+
+def _prune_mfa_sessions() -> None:
+    """Remove stale MFA sessions."""
+    now = time.monotonic()
+    stale = [k for k, v in _garmy_mfa_sessions.items()
+             if now - v["created_at"] > MFA_SESSION_TTL]
+    for k in stale:
+        _garmy_mfa_sessions.pop(k, None)
+
 
 # ---------------------------------------------------------------------------
 # Jinja2 template environment
@@ -231,6 +254,165 @@ async def api_disconnect(request: Request) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# POST /api/setup/login  — server-side garmy auth (email + password)
+# ---------------------------------------------------------------------------
+
+async def api_setup_login(request: Request) -> JSONResponse:
+    """
+    Authenticate directly on the server using garmy's OAuth flow.
+    No browser or local script required.
+
+    Request body: {"email": str, "password": str}
+
+    Responses:
+      {"mcp_url": "..."}                          — login succeeded
+      {"mfa_required": true, "session_id": "..."}  — MFA code needed
+      {"error": "..."}                             — failure
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    email = (body.get("email") or "").strip()
+    password = (body.get("password") or "").strip()
+
+    if not email or not password:
+        return JSONResponse(
+            {"error": "email and password are required"}, status_code=400
+        )
+
+    _prune_mfa_sessions()
+
+    loop = asyncio.get_event_loop()
+
+    def _do_login():
+        from garmy import AuthClient, APIClient
+        auth_client = AuthClient()
+        result = auth_client.login(email, password, return_on_mfa=True)
+        return auth_client, result
+
+    try:
+        auth_client, result = await loop.run_in_executor(None, _do_login)
+    except Exception as exc:
+        log.warning("garmy login failed for %s: %s", email, exc)
+        return JSONResponse({"error": f"Login failed: {exc}"}, status_code=401)
+
+    # --- MFA required ---
+    if isinstance(result, tuple) and result[0] == "needs_mfa":
+        _, client_state = result
+        session_id = secrets.token_urlsafe(16)
+        _garmy_mfa_sessions[session_id] = {
+            "auth_client": auth_client,
+            "client_state": client_state,
+            "email": email,
+            "created_at": time.monotonic(),
+        }
+        return JSONResponse({"mfa_required": True, "session_id": session_id})
+
+    # --- Login succeeded without MFA ---
+    return await _garmy_finish_auth(request, auth_client, email)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/setup/mfa  — submit MFA code for a pending garmy login
+# ---------------------------------------------------------------------------
+
+async def api_setup_mfa(request: Request) -> JSONResponse:
+    """
+    Complete a garmy login that required an MFA code.
+
+    Request body: {"session_id": str, "mfa_code": str}
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    session_id = (body.get("session_id") or "").strip()
+    mfa_code = (body.get("mfa_code") or "").strip()
+
+    if not session_id or not mfa_code:
+        return JSONResponse(
+            {"error": "session_id and mfa_code are required"}, status_code=400
+        )
+
+    session = _garmy_mfa_sessions.pop(session_id, None)
+    if not session:
+        return JSONResponse(
+            {"error": "MFA session not found or expired. Please log in again."},
+            status_code=400,
+        )
+
+    auth_client = session["auth_client"]
+    client_state = session["client_state"]
+    email = session["email"]
+
+    loop = asyncio.get_event_loop()
+
+    def _do_mfa():
+        auth_client.resume_login(mfa_code, client_state)
+        return auth_client
+
+    try:
+        auth_client = await loop.run_in_executor(None, _do_mfa)
+    except Exception as exc:
+        log.warning("garmy MFA failed for %s: %s", email, exc)
+        return JSONResponse({"error": f"MFA failed: {exc}"}, status_code=401)
+
+    return await _garmy_finish_auth(request, auth_client, email)
+
+
+# ---------------------------------------------------------------------------
+# Shared helper: build and store the garmy session
+# ---------------------------------------------------------------------------
+
+async def _garmy_finish_auth(
+    request: Request,
+    auth_client,
+    email: str,
+) -> JSONResponse:
+    """
+    After successful garmy auth (with or without MFA): load display_name,
+    serialise tokens, persist to DB, return the MCP URL.
+    """
+    from garmy import APIClient
+    from app.garmy_client import GarmyApiClient
+
+    loop = asyncio.get_event_loop()
+
+    def _build_client():
+        api_client = APIClient(auth_client=auth_client)
+        gc = GarmyApiClient(auth_client, api_client)
+        try:
+            gc.get_full_name()  # populates gc.display_name
+        except Exception:
+            pass
+        return gc
+
+    try:
+        gc = await loop.run_in_executor(None, _build_client)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Failed to initialise API client: {exc}"}, status_code=500
+        )
+
+    token_json = gc.dumps()
+
+    try:
+        mcp_url = await _save_user_and_get_url(
+            request, token_json, gc.display_name or None, email
+        )
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"Auth succeeded but failed to save session: {exc}"},
+            status_code=500,
+        )
+
+    return JSONResponse({"mcp_url": mcp_url})
+
+
+# ---------------------------------------------------------------------------
 # Route list (imported by main.py)
 # ---------------------------------------------------------------------------
 
@@ -243,5 +425,7 @@ setup_routes = [
     Route("/debug/mcp", debug_mcp, methods=["GET"]),
     Route("/download/garmin_setup.py", download_garmin_setup, methods=["GET"]),
     Route("/api/setup/import-token", api_setup_import_token, methods=["POST"]),
+    Route("/api/setup/login", api_setup_login, methods=["POST"]),
+    Route("/api/setup/mfa", api_setup_mfa, methods=["POST"]),
     Route("/api/disconnect", api_disconnect, methods=["POST"]),
 ]

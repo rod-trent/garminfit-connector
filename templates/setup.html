@@ -30,9 +30,134 @@
     h1 { font-size: 1.5rem; font-weight: 700; color: #E8EAF2; margin-bottom: 0.25rem; }
     .subtitle { color: #8A90AA; font-size: 0.95rem; margin-bottom: 1.75rem; }
 
-    /* ── Steps ── */
-    .steps { display: flex; flex-direction: column; gap: 1.25rem; }
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid #202038;
+      padding-bottom: 0;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      padding: 0.55rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #6A6F88;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn.active { color: #7EC8A0; border-bottom-color: #1D7A4A; }
+    .tab-btn:hover:not(.active) { color: #A8AEC8; }
 
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Login form ── */
+    .login-form { display: flex; flex-direction: column; gap: 0.85rem; }
+    .form-label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #9098B8;
+      margin-bottom: 0.3rem;
+      display: block;
+    }
+    .form-input {
+      width: 100%;
+      background: #111120;
+      border: 1px solid #252545;
+      border-radius: 7px;
+      padding: 0.65rem 0.9rem;
+      font-size: 0.9rem;
+      color: #D8DCF0;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus { border-color: #3A5A8A; }
+    .form-input::placeholder { color: #454866; }
+    .btn-primary {
+      background: #1D7A4A;
+      color: #E8F8EE;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 0.7rem 1.2rem;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 0.2rem;
+    }
+    .btn-primary:hover:not(:disabled) { background: #22934F; }
+    .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* ── MFA panel ── */
+    #mfa-panel { display: none; margin-top: 0.5rem; }
+    .mfa-hint {
+      font-size: 0.84rem;
+      color: #8A90AA;
+      margin-bottom: 0.75rem;
+      line-height: 1.55;
+    }
+
+    /* ── Success box ── */
+    #success-panel { display: none; margin-top: 0.75rem; }
+    .success-box {
+      background: #0E1F16;
+      border: 1px solid #1D4A30;
+      border-radius: 10px;
+      padding: 1.1rem 1.25rem;
+    }
+    .success-title {
+      color: #5AE098;
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+    }
+    .success-body { font-size: 0.85rem; color: #6ACEA0; line-height: 1.55; }
+    .mcp-url-wrap { position: relative; margin-top: 0.6rem; }
+    .mcp-url-box {
+      background: #0D0D1A;
+      border: 1px solid #1D4A30;
+      border-radius: 7px;
+      padding: 0.65rem 2.8rem 0.65rem 0.9rem;
+      font-size: 0.8rem;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      color: #60D888;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 0.4rem;
+      right: 0.4rem;
+      background: #1D3A2A;
+      border: 1px solid #2A5040;
+      border-radius: 5px;
+      color: #40A060;
+      font-size: 0.7rem;
+      padding: 0.2rem 0.55rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .copy-btn:hover { background: #224A34; color: #60D080; }
+
+    /* ── Alert box ── */
+    .alert {
+      background: #1F0E0E;
+      border: 1px solid #5A1A1A;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      color: #E07070;
+      margin-top: 0.75rem;
+      display: none;
+    }
+
+    /* ── Steps (local script tab) ── */
+    .steps { display: flex; flex-direction: column; gap: 1.25rem; }
     .step-block {
       background: #111120;
       border: 1px solid #202038;
@@ -60,17 +185,8 @@
       color: #C8CADE;
       margin-bottom: 0.6rem;
     }
-    .step-body {
-      font-size: 0.875rem;
-      color: #8A90AA;
-      line-height: 1.6;
-    }
-
-    /* ── Code blocks ── */
-    .code-wrap {
-      position: relative;
-      margin-top: 0.6rem;
-    }
+    .step-body { font-size: 0.875rem; color: #8A90AA; line-height: 1.6; }
+    .code-wrap { position: relative; margin-top: 0.6rem; }
     .code-block {
       background: #0D0D1A;
       border: 1px solid #252545;
@@ -83,22 +199,11 @@
       white-space: pre-wrap;
       line-height: 1.55;
     }
-    .copy-btn {
-      position: absolute;
-      top: 0.4rem;
-      right: 0.4rem;
-      background: #1D2A4A;
-      border: 1px solid #2A3A60;
-      border-radius: 5px;
+    .code-wrap .copy-btn {
+      background: #1D2A4A; border: 1px solid #2A3A60;
       color: #6080C0;
-      font-size: 0.7rem;
-      padding: 0.2rem 0.55rem;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
     }
-    .copy-btn:hover { background: #22347A; color: #90B0E8; }
-
-    /* ── Download button ── */
+    .code-wrap .copy-btn:hover { background: #22347A; color: #90B0E8; }
     .btn-download {
       display: inline-flex;
       align-items: center;
@@ -116,20 +221,7 @@
       transition: background 0.15s;
     }
     .btn-download:hover { background: #22934F; }
-
-    /* ── Info callout ── */
-    .callout {
-      background: #111820;
-      border: 1px solid #1A2E40;
-      border-left: 3px solid #4A90C8;
-      border-radius: 8px;
-      padding: 0.8rem 1rem;
-      font-size: 0.84rem;
-      color: #6AAAD8;
-      margin-bottom: 1.5rem;
-      line-height: 1.55;
-    }
-    .callout strong { color: #90C8F0; }
+    .run-cmd .code-block { border-color: #2A3820; color: #7AD4A0; }
 
     /* ── Footer ── */
     .footer-links {
@@ -141,9 +233,18 @@
     .footer-links a { color: #7080B8; text-decoration: none; }
     .footer-links a:hover { color: #A0B0D8; text-decoration: underline; }
 
-    /* ── Run command highlight ── */
-    .run-cmd .code-block { border-color: #2A3820; }
-    .run-cmd .code-block { color: #7AD4A0; }
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -153,67 +254,123 @@
   <h1>Garmin Chat Connector</h1>
   <p class="subtitle">Connect your Garmin account to Claude and other AI tools.</p>
 
-  <div class="callout">
-    <strong>How it works:</strong> A small Python script runs on your computer,
-    opens Garmin Connect in Chrome, and logs in on your behalf. It sends only
-    the session cookies to this server — your password is never transmitted.
+  <!-- ── Tabs ── -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('direct', this)">Sign in directly</button>
+    <button class="tab-btn" onclick="showTab('script', this)">Local script</button>
   </div>
 
-  <div class="steps">
+  <!-- ════════════════════════════════════════════
+       Tab 1: Direct server-side login (garmy)
+  ════════════════════════════════════════════ -->
+  <div id="tab-direct" class="tab-panel active">
 
-    <!-- Step 1: Install -->
-    <div class="step-block">
-      <div class="step-title"><span class="step-num">1</span> Install the requirements (once)</div>
-      <div class="step-body">
-        Open a terminal and run:
-        <div class="code-wrap">
-          <div class="code-block" id="cmd-install">pip install seleniumbase
+    <!-- Login form -->
+    <div id="login-form-wrap">
+      <form class="login-form" id="login-form" onsubmit="submitLogin(event)">
+        <div>
+          <label class="form-label" for="email">Garmin account email</label>
+          <input class="form-input" id="email" type="email" placeholder="you@example.com" required autocomplete="username" />
+        </div>
+        <div>
+          <label class="form-label" for="password">Password</label>
+          <input class="form-input" id="password" type="password" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <button class="btn-primary" type="submit" id="login-btn">Connect Garmin</button>
+      </form>
+      <div class="alert" id="login-error"></div>
+    </div>
+
+    <!-- MFA panel (shown when Garmin requires a 2FA code) -->
+    <div id="mfa-panel">
+      <p class="mfa-hint">
+        Garmin sent a verification code to your email or authenticator app.
+        Enter it below to complete sign-in.
+      </p>
+      <form class="login-form" id="mfa-form" onsubmit="submitMfa(event)">
+        <div>
+          <label class="form-label" for="mfa-code">Verification code</label>
+          <input class="form-input" id="mfa-code" type="text" inputmode="numeric"
+                 pattern="[0-9]*" placeholder="123456" maxlength="8" required />
+        </div>
+        <button class="btn-primary" type="submit" id="mfa-btn">Verify</button>
+      </form>
+      <div class="alert" id="mfa-error"></div>
+    </div>
+
+    <!-- Success panel -->
+    <div id="success-panel">
+      <div class="success-box">
+        <div class="success-title">Connected!</div>
+        <div class="success-body">
+          Paste this URL into Claude Desktop, Claude.ai, or any MCP-compatible
+          client as your Garmin connector:
+          <div class="mcp-url-wrap">
+            <div class="mcp-url-box" id="mcp-url-display"></div>
+            <button class="copy-btn" onclick="copyMcpUrl()">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-direct -->
+
+  <!-- ════════════════════════════════════════════
+       Tab 2: Local script (cookie-based, fallback)
+  ════════════════════════════════════════════ -->
+  <div id="tab-script" class="tab-panel">
+    <div class="steps">
+
+      <div class="step-block">
+        <div class="step-title"><span class="step-num">1</span> Install the requirements (once)</div>
+        <div class="step-body">
+          Open a terminal and run:
+          <div class="code-wrap">
+            <div class="code-block" id="cmd-install">pip install seleniumbase
 seleniumbase install chromedriver</div>
-          <button class="copy-btn" onclick="copyCode('cmd-install', this)">Copy</button>
+            <button class="copy-btn" onclick="copyCode('cmd-install', this)">Copy</button>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Step 2: Download script -->
-    <div class="step-block">
-      <div class="step-title"><span class="step-num">2</span> Download the setup script</div>
-      <div class="step-body">
-        Save this file somewhere easy to find, like your Desktop or Downloads folder.
-        <br/>
-        <a class="btn-download" href="/download/garmin_setup.py" download="garmin_setup.py">
-          ↓ &nbsp;Download garmin_setup.py
-        </a>
-      </div>
-    </div>
-
-    <!-- Step 3: Run -->
-    <div class="step-block">
-      <div class="step-title"><span class="step-num">3</span> Run the script</div>
-      <div class="step-body">
-        In your terminal, navigate to where you saved the script and run:
-        <div class="code-wrap run-cmd">
-          <div class="code-block" id="cmd-run">python garmin_setup.py --server-url <span id="server-url-placeholder">https://your-app.up.railway.app</span></div>
-          <button class="copy-btn" onclick="copyCode('cmd-run', this)">Copy</button>
+      <div class="step-block">
+        <div class="step-title"><span class="step-num">2</span> Download the setup script</div>
+        <div class="step-body">
+          Save this file somewhere easy to find, like your Desktop or Downloads folder.
+          <br/>
+          <a class="btn-download" href="/download/garmin_setup.py" download="garmin_setup.py">
+            ↓ &nbsp;Download garmin_setup.py
+          </a>
         </div>
-        Chrome will open and log you in. Enter your MFA code if prompted.
       </div>
-    </div>
 
-    <!-- Step 4: Copy URL -->
-    <div class="step-block">
-      <div class="step-title"><span class="step-num">4</span> Paste your MCP URL into Claude</div>
-      <div class="step-body">
-        When the script finishes it will print a URL like:
-        <div class="code-wrap">
-          <div class="code-block">https://your-app.up.railway.app/garmin/?token=abc123…</div>
+      <div class="step-block">
+        <div class="step-title"><span class="step-num">3</span> Run the script</div>
+        <div class="step-body">
+          In your terminal, navigate to where you saved the script and run:
+          <div class="code-wrap run-cmd">
+            <div class="code-block" id="cmd-run">python garmin_setup.py --server-url <span id="server-url-placeholder">https://your-app.up.railway.app</span></div>
+            <button class="copy-btn" onclick="copyCode('cmd-run', this)">Copy</button>
+          </div>
+          Chrome will open and log you in. Enter your MFA code if prompted.
         </div>
-        Paste that URL into <strong style="color:#C0C4D8">Claude Desktop</strong>,
-        <strong style="color:#C0C4D8">Claude.ai</strong>, or any MCP-compatible client as
-        your Garmin connector URL.
       </div>
-    </div>
 
-  </div><!-- /steps -->
+      <div class="step-block">
+        <div class="step-title"><span class="step-num">4</span> Paste your MCP URL into Claude</div>
+        <div class="step-body">
+          When the script finishes it will print a URL like:
+          <div class="code-wrap">
+            <div class="code-block">https://your-app.up.railway.app/garmin/?token=abc123…</div>
+          </div>
+          Paste that URL into <strong style="color:#C0C4D8">Claude Desktop</strong>,
+          <strong style="color:#C0C4D8">Claude.ai</strong>, or any MCP-compatible client as
+          your Garmin connector URL.
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /tab-script -->
 
   <div class="footer-links">
     Already connected? <a href="/disconnect">Disconnect your account</a>
@@ -222,14 +379,20 @@ seleniumbase install chromedriver</div>
 
 <script>
 (function () {
-  // Auto-fill the server URL in the run command
+  // ── Tab switching ──
+  window.showTab = function (tabName, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tabName).classList.add('active');
+    btn.classList.add('active');
+  };
+
+  // ── Auto-fill server URL in the local script command ──
   var origin = window.location.origin;
   var el = document.getElementById("server-url-placeholder");
-  if (el && origin) {
-    el.textContent = origin;
-  }
+  if (el && origin) { el.textContent = origin; }
 
-  // Copy-to-clipboard for code blocks
+  // ── Copy helpers ──
   window.copyCode = function (elementId, btn) {
     var text = document.getElementById(elementId).innerText.trim();
     navigator.clipboard.writeText(text).then(function () {
@@ -238,6 +401,114 @@ seleniumbase install chromedriver</div>
       setTimeout(function () { btn.textContent = orig; }, 2000);
     });
   };
+  window.copyMcpUrl = function () {
+    var text = document.getElementById('mcp-url-display').textContent.trim();
+    navigator.clipboard.writeText(text).then(function () {
+      var btn = document.querySelector('#success-panel .copy-btn');
+      var orig = btn.textContent;
+      btn.textContent = "Copied!";
+      setTimeout(function () { btn.textContent = orig; }, 2000);
+    });
+  };
+
+  // ── State ──
+  var _sessionId = null;
+
+  function showError(id, msg) {
+    var el = document.getElementById(id);
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+  function hideError(id) {
+    document.getElementById(id).style.display = 'none';
+  }
+  function setLoading(btnId, loading) {
+    var btn = document.getElementById(btnId);
+    if (loading) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Connecting…';
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = btnId === 'mfa-btn' ? 'Verify' : 'Connect Garmin';
+    }
+  }
+
+  // ── Login form submit ──
+  window.submitLogin = async function (e) {
+    e.preventDefault();
+    hideError('login-error');
+    setLoading('login-btn', true);
+
+    var email    = document.getElementById('email').value.trim();
+    var password = document.getElementById('password').value;
+
+    try {
+      var resp = await fetch('/api/setup/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, password: password }),
+      });
+      var data = await resp.json();
+
+      if (!resp.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      if (data.mfa_required) {
+        _sessionId = data.session_id;
+        document.getElementById('login-form-wrap').style.display = 'none';
+        document.getElementById('mfa-panel').style.display = 'block';
+      } else if (data.mcp_url) {
+        showSuccess(data.mcp_url);
+      } else {
+        throw new Error('Unexpected response from server');
+      }
+    } catch (err) {
+      showError('login-error', err.message);
+    } finally {
+      setLoading('login-btn', false);
+    }
+  };
+
+  // ── MFA form submit ──
+  window.submitMfa = async function (e) {
+    e.preventDefault();
+    hideError('mfa-error');
+    setLoading('mfa-btn', true);
+
+    var mfaCode = document.getElementById('mfa-code').value.trim();
+
+    try {
+      var resp = await fetch('/api/setup/mfa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: _sessionId, mfa_code: mfaCode }),
+      });
+      var data = await resp.json();
+
+      if (!resp.ok) {
+        throw new Error(data.error || 'MFA verification failed');
+      }
+
+      if (data.mcp_url) {
+        showSuccess(data.mcp_url);
+      } else {
+        throw new Error('Unexpected response from server');
+      }
+    } catch (err) {
+      showError('mfa-error', err.message);
+      setLoading('mfa-btn', false);
+    }
+  };
+
+  // ── Show success state ──
+  function showSuccess(mcpUrl) {
+    document.getElementById('login-form-wrap').style.display = 'none';
+    document.getElementById('mfa-panel').style.display = 'none';
+    document.getElementById('mcp-url-display').textContent = mcpUrl;
+    document.getElementById('success-panel').style.display = 'block';
+  }
+
 })();
 </script>
 </body>

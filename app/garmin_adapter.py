@@ -1,19 +1,20 @@
 """
 Multi-user Garmin adapter.
 
-Auth model change (March 2026):
-  Garmin's SSO/OAuth is blocked by Cloudflare, making the garth library
-  non-functional.  We now use browser-based session cookies obtained via
-  scripts/playwright_setup.py (run locally by each user).
+Supports two token formats stored in garth_token_encrypted:
 
-  The cookies + display_name are stored as an encrypted JSON string in the
-  existing garth_token_encrypted column (format changed, column name kept).
+  1. Cookie-based (legacy, obtained via local garmin_setup.py script):
+       {"cookies": {...}, "display_name": "..."}
+
+  2. Garmy OAuth (new, obtained via server-side /api/setup/login):
+       {"type": "garmy_oauth", "oauth1": {...}, "oauth2": {...},
+        "display_name": "..."}
 
 Per-request flow:
   1. Decrypt the user's stored JSON token from DB
-  2. Create a GarminApiClient from the cookies
+  2. Detect token format and create the appropriate API client
   3. Run data calls on the isolated client
-  4. Persist any updated cookies back to DB (fire-and-forget)
+  4. Persist refreshed token back to DB (fire-and-forget)
   5. Discard the client — nothing persists between requests
 """
 
@@ -26,6 +27,7 @@ from sqlalchemy import select
 from app.auth_manager import decrypt_token, encrypt_token
 from app.database import SessionLocal, User
 from app.garmin_api_client import GarminApiClient
+from app.garmy_client import GarmyApiClient, is_garmy_token
 from garmin_handler import GarminDataHandler
 
 
@@ -112,8 +114,11 @@ async def save_refreshed_tokens(access_token: str, garmin_client) -> None:
 
 async def get_garmin_handler(access_token: str) -> MultiUserGarminHandler:
     """
-    Load the user's session cookies from DB and return an authenticated
+    Load the user's token from DB and return an authenticated
     MultiUserGarminHandler ready for data queries.
+
+    Automatically selects GarmyApiClient (OAuth) or GarminApiClient (cookies)
+    based on the stored token format.
 
     Raises ValueError if the token is invalid or revoked.
     """
@@ -125,7 +130,11 @@ async def get_garmin_handler(access_token: str) -> MultiUserGarminHandler:
         )
 
     token_json = decrypt_token(user.garth_token_encrypted)
-    api_client = GarminApiClient.from_token(token_json)
+
+    if is_garmy_token(token_json):
+        api_client = GarmyApiClient.from_token(token_json)
+    else:
+        api_client = GarminApiClient.from_token(token_json)
 
     asyncio.create_task(update_last_used(access_token))
 
